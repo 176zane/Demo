@@ -89,6 +89,56 @@
 	// Bulk call to stroke a sequence of line segments.
 	// Equivalent to for(i=0; i<count; i+=2) { MoveToPoint(point[i]); AddLineToPoint(point[i+1]); StrokePath(); }
 	CGContextStrokeLineSegments(context, strokeSegments, sizeof(strokeSegments)/sizeof(strokeSegments[0]));
+    
+    
+    //UIBezierPath测试
+    UIRectFrame(CGRectMake(0, 200, 50, 50));
+    CGContextSetRGBFillColor(context, 1.0, 0.0, 0.0, 1.0);
+    UIRectFill(CGRectMake(100, 200, 50, 50));
+    
+    UIBezierPath *aPath = [UIBezierPath bezierPathWithArcCenter:CGPointMake(200, 200) radius:50 startAngle:0 endAngle:(M_PI * 0.75) clockwise:YES];
+    [aPath stroke];
+    
+    //使用CoreGraphics修改UIBezierPath
+    CGMutablePathRef cgPath = CGPathCreateMutable();
+    CGPathAddEllipseInRect(cgPath, NULL, CGRectMake(0, 300, 50, 50));
+    
+    UIBezierPath *otherPath = [UIBezierPath bezierPath];
+    otherPath.CGPath = cgPath;
+    otherPath.usesEvenOddFillRule = YES;
+    //将cgPath赋值给UIBezierPath之后即可释放
+    CGPathRelease(cgPath);
+    
+    [otherPath stroke];
+    
+    //混合使用CoreGraphics、UIBezierPath修改UIBezierPath
+    UIBezierPath *bPath = [UIBezierPath bezierPathWithOvalInRect:CGRectMake(100, 300, 50, 50)];
+    
+    //需要创建一个可变拷贝用来修改(不能直接获取CGPath属性修改)
+    CGPathRef cgPath2 = bPath.CGPath;
+    CGMutablePathRef mutablePath = CGPathCreateMutableCopy(cgPath2);
+    
+    CGPathAddEllipseInRect(mutablePath, NULL, CGRectMake(160, 300, 50, 50));
+    bPath.CGPath = mutablePath;
+    CGPathRelease(mutablePath);
+
+    [bPath stroke];
+    
+    //
+    UIBezierPath *cPath = [UIBezierPath bezierPathWithOvalInRect:CGRectMake(0, 0, 200, 100)];
+    [[UIColor greenColor] setStroke];
+    [[UIColor redColor] setFill];
+    
+    CGContextRef aRef = UIGraphicsGetCurrentContext();
+    
+    CGContextSaveGState(aRef);
+    CGContextTranslateCTM(aRef, 0, 400);
+    cPath.lineWidth = 5;
+    
+    [cPath fill];
+    [cPath stroke];//试试先stroke后fill
+    
+    CGContextRestoreGState(aRef);
 }
 
 @end
