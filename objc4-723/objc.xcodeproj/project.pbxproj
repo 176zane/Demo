@@ -21,6 +21,8 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+		2F4C807B20DDE9A10016A7F9 /* Sark.m in Sources */ = {isa = PBXBuildFile; fileRef = 2F4C807A20DDE9A10016A7F9 /* Sark.m */; };
+		2F4C807E20DDE9D00016A7F9 /* Test.m in Sources */ = {isa = PBXBuildFile; fileRef = 2F4C807D20DDE9D00016A7F9 /* Test.m */; };
 		2FC21E61209313D30030D303 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 2FC21E60209313D30030D303 /* main.m */; };
 		2FC21E80209324F80030D303 /* Car.m in Sources */ = {isa = PBXBuildFile; fileRef = 2FC21E7F209324F80030D303 /* Car.m */; };
 		2FC21E83209845DC0030D303 /* Father.m in Sources */ = {isa = PBXBuildFile; fileRef = 2FC21E82209845DC0030D303 /* Father.m */; };
@@ -141,6 +143,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		2F4C807920DDE9A10016A7F9 /* Sark.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Sark.h; sourceTree = "<group>"; };
+		2F4C807A20DDE9A10016A7F9 /* Sark.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Sark.m; sourceTree = "<group>"; };
+		2F4C807C20DDE9D00016A7F9 /* Test.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Test.h; sourceTree = "<group>"; };
+		2F4C807D20DDE9D00016A7F9 /* Test.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Test.m; sourceTree = "<group>"; };
 		2FC21E5E209313D30030D303 /* debug */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = debug; sourceTree = BUILT_PRODUCTS_DIR; };
 		2FC21E60209313D30030D303 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		2FC21E7E209324F80030D303 /* Car.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Car.h; sourceTree = "<group>"; };
@@ -344,6 +350,10 @@
 			isa = PBXGroup;
 			children = (
 				2FC21E60209313D30030D303 /* main.m */,
+				2F4C807C20DDE9D00016A7F9 /* Test.h */,
+				2F4C807D20DDE9D00016A7F9 /* Test.m */,
+				2F4C807920DDE9A10016A7F9 /* Sark.h */,
+				2F4C807A20DDE9A10016A7F9 /* Sark.m */,
 				2FC21E84209845FD0030D303 /* Son.h */,
 				2FC21E85209845FD0030D303 /* Son.m */,
 				2FC21E81209845DC0030D303 /* Father.h */,
@@ -599,8 +609,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2F4C807B20DDE9A10016A7F9 /* Sark.m in Sources */,
 				2FC21E86209845FD0030D303 /* Son.m in Sources */,
 				2FC21E80209324F80030D303 /* Car.m in Sources */,
+				2F4C807E20DDE9D00016A7F9 /* Test.m in Sources */,
 				2FC21E83209845DC0030D303 /* Father.m in Sources */,
 				2FC21E61209313D30030D303 /* main.m in Sources */,
 			);
@@ -682,6 +694,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
+				CLANG_ENABLE_OBJC_ARC = NO;
 				COPY_HEADERS_RUN_UNIFDEF = YES;
 				COPY_HEADERS_UNIFDEF_FLAGS = "-UBUILD_FOR_OSX";
 				"COPY_HEADERS_UNIFDEF_FLAGS[sdk=macosx*]" = "-DBUILD_FOR_OSX";
@@ -758,6 +771,7 @@
 		1DEB914C08733D8E0010E9CD /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_OBJC_ARC = NO;
 				COPY_HEADERS_RUN_UNIFDEF = YES;
 				COPY_HEADERS_UNIFDEF_FLAGS = "-UBUILD_FOR_OSX";
 				"COPY_HEADERS_UNIFDEF_FLAGS[sdk=macosx*]" = "-DBUILD_FOR_OSX";

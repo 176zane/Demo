@@ -7,14 +7,21 @@
 
 #import <Foundation/Foundation.h>
 #import "runtime.h"
+#import "objc-runtime.h"
+
 #import "Son.h"
 #import "Car.h"
-#import "objc-runtime.h"
+
+
+#import "Test.h"
 
 int main(int argc, const char * argv[]) {
     @autoreleasepool {
         
-        NSObject * objc = [[NSObject alloc] init];
+        //NSObject * objc = [[NSObject alloc] init];
+       //[[Test alloc] init];
+       
+       
         
 //        Car *car = [[Car alloc] init];
 //        [car run];
@@ -45,6 +52,20 @@ int main(int argc, const char * argv[]) {
 //        objc_setAssociatedObject(object, someKey, @"Desgard_Duan", 0);
 //        NSLog(@"isa: %p ", *(void **)(__bridge void *)object);
         
+        dispatch_queue_t que = dispatch_queue_create("com.zane.concurrentQueue", DISPATCH_QUEUE_CONCURRENT);
+        void (^blk)(void) = ^{
+            NSLog(@"block");
+        };
+        blk();
+        dispatch_async(que, ^{
+            NSLog(@"000");
+            dispatch_sync(que, ^{
+                NSLog(@"not locked");
+            });
+            NSLog(@"222");
+        });
+        NSLog(@"111");
+        //dispatch_release(que);
     }
     return 0;
 }
