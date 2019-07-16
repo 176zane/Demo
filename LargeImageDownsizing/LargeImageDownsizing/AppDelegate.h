@@ -2,7 +2,7 @@
 //  AppDelegate.h
 //  LargeImageDownsizing
 //
-//  Created by Deep Thought on 2019/7/1.
+//  Created by Deep Thought on 2019/6/30.
 //  Copyright © 2019 Zane. All rights reserved.
 //
 

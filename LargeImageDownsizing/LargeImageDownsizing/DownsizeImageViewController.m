@@ -7,8 +7,15 @@
 //
 
 #import "DownsizeImageViewController.h"
+#import "UIImageView+DownsizeLargeImage.h"
 
-@interface DownsizeImageViewController ()
+static NSString *const kLargeImageName = @"large_leaves_70mp.jpg";// 7033x10110 image, 271 MB uncompressed
+
+@interface DownsizeImageViewController () 
+
+//@property (weak, nonatomic) IBOutlet UIScrollView *scrollView;
+//@property (nonatomic, strong) UIImageView *imageView;
+@property (weak, nonatomic) IBOutlet UIImageView *largeImageView;
 
 @end
 
@@ -17,7 +24,10 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view.
+
+     [self.largeImageView ybw_setImageWithFilename:kLargeImageName];
 }
+
 
 /*
 #pragma mark - Navigation

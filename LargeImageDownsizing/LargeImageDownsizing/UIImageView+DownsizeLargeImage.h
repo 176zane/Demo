@@ -12,6 +12,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface UIImageView (DownsizeLargeImage)
 
+- (void)ybw_setImageWithFilename:(NSString *)filename;
+
 @end
 
 NS_ASSUME_NONNULL_END
