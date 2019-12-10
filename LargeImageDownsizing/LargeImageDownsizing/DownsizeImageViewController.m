@@ -24,9 +24,12 @@ static NSString *const kLargeImageName = @"large_leaves_70mp.jpg";// 7033x10110 
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view.
-
-     [self.largeImageView ybw_setImageWithFilename:kLargeImageName];
+    
+    [self.largeImageView ybw_setImageWithFilename:kLargeImageName];
 }
+//- (void)viewDidAppear:(BOOL)animated {
+//    self.largeImageView.backgroundColor = [UIColor greenColor];
+//}
 
 
 /*
