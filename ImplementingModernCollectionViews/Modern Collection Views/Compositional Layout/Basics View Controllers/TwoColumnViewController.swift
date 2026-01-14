@@ -35,11 +35,11 @@ extension TwoColumnViewController {
                                               heightDimension: .absolute(44))
         let group = NSCollectionLayoutGroup.horizontal(layoutSize: groupSize, repeatingSubitem: item, count: 2)
         let spacing = CGFloat(10)
-        group.interItemSpacing = .fixed(spacing)
+        //group.interItemSpacing = .fixed(spacing)
 
         let section = NSCollectionLayoutSection(group: group)
-        section.interGroupSpacing = spacing
-        section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10)
+        //section.interGroupSpacing = spacing
+        section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 10)
 
         let layout = UICollectionViewCompositionalLayout(section: section)
         return layout

@@ -47,7 +47,7 @@ extension GridViewController {
     private func configureHierarchy() {
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: createLayout())
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collectionView.backgroundColor = .black
+        collectionView.backgroundColor = .white
         view.addSubview(collectionView)
     }
     private func configureDataSource() {
