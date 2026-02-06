@@ -9,7 +9,8 @@ import Foundation
 internal import Combine
 
 class EmojiMemoryGame: ObservableObject {
-
+    typealias Card = MemoryGamge<String>.Card
+    
     private static let emojis = ["❤️","😭","🙈","👅","🤖","👿","🥷🏼","🧞‍♂️","🧑🏽‍🦯‍➡️","🍎","🥪",]
     private static func createMemoryGame() -> MemoryGamge<String> {
         return MemoryGamge(numberOfPairsOfCards: 15) { pairIndex in
@@ -23,13 +24,13 @@ class EmojiMemoryGame: ObservableObject {
     
    @Published private var model = createMemoryGame()
     
-    var cards: Array<MemoryGamge<String>.Card>{
+    var cards: Array<Card>{
         return model.cards
     }
     func shuffle(){
         model.shuffle()
     }
-    func choose(_ card: MemoryGamge<String>.Card) {
+    func choose(_ card: Card) {
         model.choose(card: card)
     }
 }
