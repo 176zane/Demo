@@ -58,7 +58,7 @@ struct EmojiMemoryGameView: View {
                     .onTapGesture {
                         viewModel.choose(c)
                     }
-                Text(c.id)
+                //Text(c.id)
             }
             
                 

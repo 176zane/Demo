@@ -10,7 +10,7 @@ struct MemoryGamge<CardContent> where CardContent:Equatable{
     struct Card :Equatable,Identifiable{
         var id: String
         
-        var isFaceUp: Bool = false
+        var isFaceUp: Bool = true
         var isMatched: Bool = false
         var content: CardContent
     }
