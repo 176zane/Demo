@@ -25,6 +25,7 @@ struct EmojiMemoryGameView: View {
                 .background(.green)
             
             .foregroundColor(.orange)
+            
 //            Text("hello").background(Rectangle().foregroundColor(.red))
 //            Circle().overlay(Text("hellow").foregroundColor(.red),alignment: .center)
             Button("Shuffle") {
