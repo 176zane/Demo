@@ -152,6 +152,18 @@ final class PhotoLibraryService: PhotoLibraryServing {
         return found
     }
 
+    func setFavorite(_ favorite: Bool, id: String) async throws {
+        try ensureAuthorized()
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
+        guard let asset = assets.firstObject else {
+            throw PhotoLibraryError.assetNotFound(id)
+        }
+        try await performChanges {
+            let request = PHAssetChangeRequest(for: asset)
+            request.isFavorite = favorite
+        }
+    }
+
     // MARK: - Private
 
     private func ensureAuthorized() throws {

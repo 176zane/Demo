@@ -109,4 +109,19 @@ final class MockPhotoLibrary: PhotoLibraryServing {
     func hasAnyMedia(allowedKinds: Set<MediaKind>) async -> Bool {
         items.contains { allowedKinds.contains($0.mediaKind) }
     }
+
+    func setFavorite(_ favorite: Bool, id: String) async throws {
+        guard let index = items.firstIndex(where: { $0.id == id }) else {
+            throw PhotoLibraryError.assetNotFound(id)
+        }
+        let old = items[index]
+        items[index] = MediaItem(
+            id: old.id,
+            mediaKind: old.mediaKind,
+            creationDate: old.creationDate,
+            isFavorite: favorite,
+            pixelWidth: old.pixelWidth,
+            pixelHeight: old.pixelHeight
+        )
+    }
 }

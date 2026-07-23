@@ -32,6 +32,13 @@ final class RecentViewedStore {
         ids.contains(id)
     }
 
+    /// 清空近期已看（统计页「重置浏览记录」）
+    func clear() {
+        ids = []
+        ordered = []
+        persist()
+    }
+
     /// 记录一批刚抽到/看过的资源
     func remember(_ newIDs: [String]) {
         guard !newIDs.isEmpty else { return }

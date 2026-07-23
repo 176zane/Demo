@@ -23,6 +23,9 @@ protocol PhotoLibraryServing: AnyObject {
 
     /// 库中是否至少有一张可用媒体（在筛选条件下）
     func hasAnyMedia(allowedKinds: Set<MediaKind>) async -> Bool
+
+    /// 切换收藏状态（视频/那年今日等操作栏使用）
+    func setFavorite(_ favorite: Bool, id: String) async throws
 }
 
 enum PhotoLibraryError: LocalizedError, Equatable {

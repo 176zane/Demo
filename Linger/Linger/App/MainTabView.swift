@@ -2,6 +2,10 @@ import SwiftUI
 
 /// 权限通过后的主壳层，统一承载照片、视频和统计三个入口。
 struct MainTabView: View {
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var statsStore: StatsStore
+    @EnvironmentObject private var preferencesStore: PreferencesStore
+
     @State private var selectedTab: MainTab = .photos
 
     var body: some View {
@@ -22,10 +26,10 @@ struct MainTabView: View {
         case .photos:
             PhotoReviewContainerView()
         case .videos:
-            PlaceholderTabView(
-                systemImage: "play.rectangle.fill",
-                title: "视频",
-                message: "视频回顾即将到来"
+            VideoReviewView(
+                photoLibrary: appState.photoLibrary,
+                statsStore: statsStore,
+                preferencesStore: preferencesStore
             )
         case .stats:
             PlaceholderTabView(
