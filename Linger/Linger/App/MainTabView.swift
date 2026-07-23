@@ -32,11 +32,7 @@ struct MainTabView: View {
                 preferencesStore: preferencesStore
             )
         case .stats:
-            PlaceholderTabView(
-                systemImage: "chart.bar.fill",
-                title: "统计",
-                message: "你的回顾成果会显示在这里"
-            )
+            StatsView()
         }
     }
 

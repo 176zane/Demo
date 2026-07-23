@@ -49,6 +49,12 @@ struct PhotoReviewView: View {
         HStack(spacing: 12) {
             // 左上角筛选胶囊：照片池数量 + 类型开关（不含视频）
             Menu {
+                Button {
+                    viewModel.showOnThisDay = true
+                } label: {
+                    Label("那年今日", systemImage: "sparkles")
+                }
+                Divider()
                 ForEach(MediaKind.nonVideoKinds.sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { kind in
                     Button {
                         preferencesStore.toggleKind(kind)

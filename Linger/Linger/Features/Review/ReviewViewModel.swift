@@ -16,6 +16,7 @@ final class ReviewViewModel: ObservableObject {
     @Published private(set) var phase: Phase = .loading
     @Published private(set) var deal: ReviewDeal = ReviewDeal(items: [])
     @Published var showDayTimeline = false
+    @Published var showOnThisDay = false
     @Published var showSettings = false
     @Published var undoBannerID: String?
     @Published var dragOffset: CGSize = .zero

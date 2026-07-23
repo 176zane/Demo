@@ -4,67 +4,67 @@
 
 **不含**订阅、付费墙、云同步。
 
-## 功能阶段
+## 功能
 
-| 阶段 | 内容 |
-|------|------|
-| P0 | 相册权限、随机一组、上划标记删除、组末确认、统计与设置 |
-| P1 | 「回到那天」（双指捏合）、实况照片 |
-| P2 | 类型筛选、视频随机回顾 |
+| Tab | 内容 |
+|-----|------|
+| 照片 | 3D 卡片堆随机回顾；上划标记删除 → **组末确认**；捏合「回到那天」；菜单「那年今日」 |
+| 视频 | 全屏播放；右侧收藏 / 分享 / 垃圾桶；垃圾桶为 **5 秒可撤销的延迟删除**（无确认页） |
+| 统计 | 照片/截屏/视频分桶：查看、删除、腾出空间；可重置浏览记录（无 Pro） |
 
 ## 架构
 
 ```
 Linger/
-  App/           入口与根路由
-  Features/      Onboarding / Review / ConfirmDelete / DayTimeline / Settings
-  Domain/        模型与协议
-  Data/          PhotoLibraryService、ImageLoader、Stores
-  Components/    可复用媒体视图
+  App/           RootView → MainTabView（悬浮胶囊 Tab）
+  Features/      PhotoReview / VideoReview / Stats / OnThisDay / DayTimeline / ConfirmDelete / Settings
+  Domain/        Models + PhotoLibraryServing
+  Data/          PhotoKit services、Stores、抽样
+  Components/    CardStack、媒体视图、玻璃按钮等
+  Theme/         LingerTheme
 ```
 
-- **MVVM**：`ReviewViewModel` 编排抽组 / 手势 / 确认删除
-- **PhotoLibraryServing**：便于单测 mock
-- **随机抽样**：`RandomSampler` 纯函数，可单测
-
-设计与任务文档：
+设计与计划：
 
 - [设计规格](docs/superpowers/specs/2026-07-23-linger-design.md)
-- [实现计划](docs/superpowers/plans/2026-07-23-linger-implementation.md)
+- [UI 对齐计划](docs/superpowers/plans/2026-07-23-linger-ui-parity.md)
 
 ## 环境要求
 
 - macOS + Xcode 16+（工程目标 iOS 17+）
-- 真机更佳：删除、实况、iCloud 照片在模拟器上能力有限
+- 真机更佳：删除、实况、分享、iCloud 照片在模拟器上能力有限
 
 ## 如何运行
 
 ```bash
-cd ~/Projects/Linger
-xcodegen generate   # 若尚未生成 Linger.xcodeproj
+cd /path/to/Linger
+xcodegen generate
 open Linger.xcodeproj
 ```
 
-1. 在 Xcode → Signing & Capabilities 选择你的 Team（`project.yml` 中 `DEVELOPMENT_TEAM` 默认为空，避免误绑他人账号）
+1. 在 Xcode → Signing & Capabilities 选择你的 Team（`project.yml` 中 `DEVELOPMENT_TEAM` 默认为空）
 2. 真机或模拟器运行 `Linger`
 3. 允许「完整相册访问」以便删除（读写权限）
 
-### 手势
+### 照片手势
 
-- **上划**：标记删除（可短时撤销）
+- **上划**：标记删除（可短时撤销标记）→ 组末确认页才真正删除
 - **左滑**：保留并下一张
-- **双指捏合**：回到那天
+- **双指捏合**：回到那天（沉浸横向浏览）
+
+### 视频操作
+
+- **垃圾桶**：进入待删队列，5 秒内可撤销；超时或切下一批时执行 `deleteAssets`
+- **爱心**：切换系统收藏
+- **分享**：导出后系统分享面板
 
 ## 测试
 
 ```bash
-# 若 name 匹配到多个模拟器，请改用 id=...
 xcodebuild -scheme Linger -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4' test
 ```
-
-覆盖：随机抽样、ReviewDeal、Stats/Preferences、Mock 相册按日查询。
 
 ## 权限说明
 
 `NSPhotoLibraryUsageDescription`：随机回顾并在确认后删除。  
-删除走 `PHAssetChangeRequest.deleteAssets`，组末二次确认。
+照片删除走组末确认；视频删除走延迟即时删除路径。

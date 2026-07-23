@@ -13,21 +13,10 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("成就") {
-                    HStack {
-                        Label("已浏览", systemImage: "eye")
-                        Spacer()
-                        Text("\(statsStore.stats.viewedCount)")
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    HStack {
-                        Label("已删除", systemImage: "trash")
-                        Spacer()
-                        Text("\(statsStore.stats.deletedCount)")
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
+                Section {
+                    Text("浏览 / 删除 / 腾出空间请到「统计」Tab 查看。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("每组数量") {

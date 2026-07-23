@@ -3,6 +3,9 @@ import Foundation
 /// 跨启动持久化「近期已看」identifier，降低短时间重复抽到同一批
 @MainActor
 final class RecentViewedStore {
+    /// App 内共享实例，保证统计重置与抽组去重读写同一份数据
+    static let shared = RecentViewedStore()
+
     private enum Keys {
         static let ids = "linger.recentViewed.ids"
     }

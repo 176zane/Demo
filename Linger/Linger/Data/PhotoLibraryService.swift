@@ -18,8 +18,8 @@ final class PhotoLibraryService: PhotoLibraryServing {
     private var selfieCacheBuiltAt: Date?
 
     init(recentStore: RecentViewedStore? = nil) {
-        // 默认参数不能直接构造 @MainActor 类型，故在 init 体内创建
-        self.recentStore = recentStore ?? RecentViewedStore()
+        // 默认与统计重置共用 shared，避免清统计后抽组仍命中旧去重集
+        self.recentStore = recentStore ?? RecentViewedStore.shared
     }
 
     func authorizationStatus() -> PhotoAuthStatus {
@@ -162,6 +162,44 @@ final class PhotoLibraryService: PhotoLibraryServing {
             let request = PHAssetChangeRequest(for: asset)
             request.isFavorite = favorite
         }
+    }
+
+    func fetchOnThisDayItems(allowedKinds: Set<MediaKind>, yearsBack: Int) async throws -> [MediaItem] {
+        try ensureAuthorized()
+        let calendar = Calendar.current
+        let today = Date()
+        let month = calendar.component(.month, from: today)
+        let day = calendar.component(.day, from: today)
+        let thisYear = calendar.component(.year, from: today)
+        let selfieIDs = selfieIdentifierSet()
+
+        var collected: [MediaItem] = []
+        let span = max(1, yearsBack)
+        for year in (thisYear - span)..<thisYear {
+            var components = DateComponents()
+            components.year = year
+            components.month = month
+            components.day = day
+            guard let start = calendar.date(from: components),
+                  let end = calendar.date(byAdding: .day, value: 1, to: start) else {
+                continue
+            }
+            let options = PHFetchOptions()
+            options.predicate = NSPredicate(
+                format: "creationDate >= %@ AND creationDate < %@",
+                start as NSDate,
+                end as NSDate
+            )
+            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+            let result = PHAsset.fetchAssets(with: options)
+            result.enumerateObjects { asset, _, _ in
+                if let item = Self.makeMediaItem(from: asset, selfieIDs: selfieIDs),
+                   allowedKinds.contains(item.mediaKind) {
+                    collected.append(item)
+                }
+            }
+        }
+        return collected
     }
 
     // MARK: - Private

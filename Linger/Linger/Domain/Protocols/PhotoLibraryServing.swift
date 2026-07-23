@@ -26,6 +26,9 @@ protocol PhotoLibraryServing: AnyObject {
 
     /// 切换收藏状态（视频/那年今日等操作栏使用）
     func setFavorite(_ favorite: Bool, id: String) async throws
+
+    /// 「那年今日」：最近若干年同月日的媒体
+    func fetchOnThisDayItems(allowedKinds: Set<MediaKind>, yearsBack: Int) async throws -> [MediaItem]
 }
 
 enum PhotoLibraryError: LocalizedError, Equatable {

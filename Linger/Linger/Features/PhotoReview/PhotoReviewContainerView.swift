@@ -63,14 +63,22 @@ private struct PhotoReviewScreen: View {
                 .environmentObject(preferencesStore)
                 .environmentObject(appState)
         }
-        .sheet(isPresented: $viewModel.showDayTimeline) {
+        .fullScreenCover(isPresented: $viewModel.showDayTimeline) {
             if let date = viewModel.currentItem?.creationDate {
-                DayTimelineView(
+                DayImmersiveView(
                     day: date,
                     photoLibrary: appState.photoLibrary,
-                    allowedKinds: preferencesStore.allowedKinds.intersection(MediaKind.nonVideoKinds)
+                    allowedKinds: preferencesStore.allowedKinds.intersection(MediaKind.nonVideoKinds),
+                    onDismiss: { viewModel.showDayTimeline = false }
                 )
             }
+        }
+        .fullScreenCover(isPresented: $viewModel.showOnThisDay) {
+            OnThisDayView(
+                photoLibrary: appState.photoLibrary,
+                allowedKinds: preferencesStore.allowedKinds.intersection(MediaKind.nonVideoKinds),
+                onDismiss: { viewModel.showOnThisDay = false }
+            )
         }
         .animation(.easeInOut(duration: 0.25), value: viewModel.phase)
     }

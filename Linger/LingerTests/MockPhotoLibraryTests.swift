@@ -124,4 +124,21 @@ final class MockPhotoLibrary: PhotoLibraryServing {
             pixelHeight: old.pixelHeight
         )
     }
+
+    func fetchOnThisDayItems(allowedKinds: Set<MediaKind>, yearsBack: Int) async throws -> [MediaItem] {
+        let calendar = Calendar.current
+        let today = Date()
+        let month = calendar.component(.month, from: today)
+        let day = calendar.component(.day, from: today)
+        let thisYear = calendar.component(.year, from: today)
+        return items.filter { item in
+            guard allowedKinds.contains(item.mediaKind),
+                  let date = item.creationDate else { return false }
+            let y = calendar.component(.year, from: date)
+            let m = calendar.component(.month, from: date)
+            let d = calendar.component(.day, from: date)
+            return m == month && d == day && y < thisYear && y >= thisYear - max(1, yearsBack)
+        }
+        .sorted { ($0.creationDate ?? .distantPast) < ($1.creationDate ?? .distantPast) }
+    }
 }
