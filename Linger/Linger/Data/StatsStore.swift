@@ -21,17 +21,35 @@ final class StatsStore: ObservableObject {
         }
     }
 
-    func recordViewed(_ count: Int = 1) {
+    /// 按分桶记录浏览
+    func recordViewed(bucket: StatsBucket, count: Int = 1) {
         var next = stats
-        next.recordViewed(count)
+        next.recordViewed(bucket: bucket, count: count)
         stats = next
         persist()
     }
 
-    func recordDeleted(_ count: Int = 1) {
+    /// 按分桶记录删除及释放字节
+    func recordDeleted(bucket: StatsBucket, count: Int = 1, bytes: Int64 = 0) {
         var next = stats
-        next.recordDeleted(count)
+        next.recordDeleted(bucket: bucket, count: count, freedBytes: bytes)
         stats = next
+        persist()
+    }
+
+    /// 兼容旧调用：未指定桶时归入照片桶
+    func recordViewed(_ count: Int = 1) {
+        recordViewed(bucket: .photo, count: count)
+    }
+
+    /// 兼容旧调用：未指定桶时归入照片桶
+    func recordDeleted(_ count: Int = 1) {
+        recordDeleted(bucket: .photo, count: count)
+    }
+
+    /// 清空全部统计（RecentViewedStore 由调用方另行重置）
+    func resetAll() {
+        stats = .empty
         persist()
     }
 
