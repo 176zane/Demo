@@ -12,4 +12,17 @@ final class UserStatsBucketTests: XCTestCase {
         stats.reset()
         XCTAssertEqual(stats, .empty)
     }
+
+    /// 旧版 JSON 仅含 viewedCount/deletedCount 时应迁移到 photo 桶
+    func testLegacyStatsMigration() throws {
+        let json = """
+        {"viewedCount":5,"deletedCount":3}
+        """
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        let stats = try JSONDecoder().decode(UserStats.self, from: data)
+        XCTAssertEqual(stats.viewedByBucket[.photo], 5)
+        XCTAssertEqual(stats.deletedByBucket[.photo], 3)
+        XCTAssertEqual(stats.viewedCount, 5)
+        XCTAssertEqual(stats.deletedCount, 3)
+    }
 }

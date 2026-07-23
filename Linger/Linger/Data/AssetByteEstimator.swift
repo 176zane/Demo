@@ -3,6 +3,9 @@ import Photos
 
 /// 删除前估算本地资源占用字节（PhotoKit）
 enum AssetByteEstimator {
+    /// PhotoKit 私有 KVC 键；先检查 selector 再读取，避免 NSUnknownKeyException
+    private static let fileSizeSelector = Selector(("fileSize"))
+
     /// 根据 localIdentifier 累加关联资源的 fileSize；失败或找不到资源时返回 0
     static func estimatedBytes(forLocalIdentifier localIdentifier: String) async -> Int64 {
         await Task.detached(priority: .utility) {
@@ -14,15 +17,20 @@ enum AssetByteEstimator {
 
             var total: Int64 = 0
             for resource in resources {
-                if let size = resource.value(forKey: "fileSize") as? Int64 {
-                    total += max(0, size)
-                } else if let size = resource.value(forKey: "fileSize") as? Int {
-                    total += Int64(max(0, size))
-                } else if let size = resource.value(forKey: "fileSize") as? NSNumber {
-                    total += size.int64Value
-                }
+                guard let size = fileSize(from: resource) else { continue }
+                total += size
             }
             return total
         }.value
+    }
+
+    /// 安全读取 fileSize：不支持的键返回 nil（规格要求失败时按 0 处理）
+    private static func fileSize(from resource: PHAssetResource) -> Int64? {
+        guard resource.responds(to: fileSizeSelector) else { return nil }
+        guard let raw = resource.value(forKey: "fileSize") else { return nil }
+        if let size = raw as? Int64 { return max(0, size) }
+        if let size = raw as? Int { return Int64(max(0, size)) }
+        if let size = raw as? NSNumber { return max(0, size.int64Value) }
+        return nil
     }
 }

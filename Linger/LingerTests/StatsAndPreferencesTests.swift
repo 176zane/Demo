@@ -19,6 +19,21 @@ final class StatsAndPreferencesTests: XCTestCase {
         XCTAssertEqual(reloaded.stats.deletedCount, 2)
     }
 
+    func testResetAllClearsBuckets() {
+        let suiteName = "linger.tests.reset.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        let store = StatsStore(defaults: suite)
+        store.recordViewed(bucket: .screenshot, count: 2)
+        store.recordDeleted(bucket: .video, count: 1, bytes: 500)
+        store.resetAll()
+        XCTAssertEqual(store.stats, .empty)
+
+        let reloaded = StatsStore(defaults: suite)
+        XCTAssertEqual(reloaded.stats, .empty)
+    }
+
     func testPreferencesDealSizeClamped() {
         let name = "linger.tests.prefs.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: name)!
