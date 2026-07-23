@@ -51,6 +51,8 @@ final class MockPhotoLibrary: PhotoLibraryServing {
     var status: PhotoAuthStatus = .authorized
     var items: [MediaItem] = []
     var deleted: [String] = []
+    /// deleteAssets 被调用次数（验证「标记≠删除」）
+    var deleteCallCount = 0
     /// 若设置则优先返回该删除结果（用于部分失败测试）
     var deleteResultOverride: DeleteResult?
     /// 若设置则删除时抛出该错误
@@ -88,6 +90,7 @@ final class MockPhotoLibrary: PhotoLibraryServing {
     }
 
     func deleteAssets(withIDs ids: [String]) async throws -> DeleteResult {
+        deleteCallCount += 1
         if let deleteShouldThrow {
             throw deleteShouldThrow
         }

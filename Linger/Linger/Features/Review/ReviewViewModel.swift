@@ -65,8 +65,8 @@ final class ReviewViewModel: ObservableObject {
         mediaLoadState = .loading
         viewedInDeal = []
 
-        // 先探测是否有可用媒体，避免大库空筛选时走完整抽组
-        let kinds = preferencesStore.allowedKinds
+        // 照片 Tab：只抽非视频类型（与偏好筛选取交集）
+        let kinds = activePhotoKinds
         let hasMedia = await photoLibrary.hasAnyMedia(allowedKinds: kinds)
         guard hasMedia else {
             phase = .empty
@@ -178,9 +178,15 @@ final class ReviewViewModel: ObservableObject {
         defer { isDeleting = false }
 
         do {
+            // 删除前按项估算字节，成功后再写入对应分桶
+            var bytesByID: [String: Int64] = [:]
+            for id in selectedIDs {
+                bytesByID[id] = await AssetByteEstimator.estimatedBytes(forLocalIdentifier: id)
+            }
+
             let result = try await photoLibrary.deleteAssets(withIDs: Array(selectedIDs))
             if result.deletedCount > 0 {
-                statsStore.recordDeleted(result.deletedCount)
+                recordDeletedStats(forIDs: result.deletedIDs, bytesByID: bytesByID)
                 // 已删成功的项从本组移除，确认页只保留失败项供重试
                 deal.removeItems(ids: Set(result.deletedIDs))
             }
@@ -222,10 +228,32 @@ final class ReviewViewModel: ObservableObject {
         }
     }
 
+    /// 照片池：偏好 ∩ 非视频；若交集为空则回退到全部非视频
+    private var activePhotoKinds: Set<MediaKind> {
+        let filtered = preferencesStore.allowedKinds.intersection(MediaKind.nonVideoKinds)
+        return filtered.isEmpty ? MediaKind.nonVideoKinds : filtered
+    }
+
     private func recordViewIfNeeded(_ item: MediaItem) {
         guard !viewedInDeal.contains(item.id) else { return }
         viewedInDeal.insert(item.id)
-        statsStore.recordViewed(1)
+        statsStore.recordViewed(bucket: item.mediaKind.statsBucket, count: 1)
+    }
+
+    /// 按媒体类型分桶累计删除数与释放字节
+    private func recordDeletedStats(forIDs ids: [String], bytesByID: [String: Int64]) {
+        var tallies: [StatsBucket: (count: Int, bytes: Int64)] = [:]
+        for id in ids {
+            let kind = deal.items.first(where: { $0.id == id })?.mediaKind
+                ?? deal.markedItems.first(where: { $0.id == id })?.mediaKind
+                ?? .photo
+            let bucket = kind.statsBucket
+            let prev = tallies[bucket] ?? (0, 0)
+            tallies[bucket] = (prev.count + 1, prev.bytes + (bytesByID[id] ?? 0))
+        }
+        for (bucket, tally) in tallies {
+            statsStore.recordDeleted(bucket: bucket, count: tally.count, bytes: tally.bytes)
+        }
     }
 
     private func presentUndo(for id: String) {

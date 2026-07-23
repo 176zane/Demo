@@ -20,8 +20,7 @@ struct MainTabView: View {
     private var tabContent: some View {
         switch selectedTab {
         case .photos:
-            // Task 3 会在此替换为照片 3D 卡片堆；当前沿用既有回顾流程。
-            ReviewContainerView()
+            PhotoReviewContainerView()
         case .videos:
             PlaceholderTabView(
                 systemImage: "play.rectangle.fill",

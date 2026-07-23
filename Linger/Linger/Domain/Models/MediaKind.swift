@@ -25,4 +25,21 @@ enum MediaKind: String, CaseIterable, Identifiable, Codable, Sendable {
 
     /// 默认开启的筛选集合（全部类型）
     static var allEnabled: Set<MediaKind> { Set(MediaKind.allCases) }
+
+    /// 照片 Tab 可用类型（排除视频，视频走独立 Tab）
+    static var nonVideoKinds: Set<MediaKind> {
+        Set(MediaKind.allCases.filter { $0 != .video })
+    }
+
+    /// 映射到统计分桶
+    var statsBucket: StatsBucket {
+        switch self {
+        case .screenshot:
+            return .screenshot
+        case .video:
+            return .video
+        case .photo, .livePhoto, .selfie, .gif:
+            return .photo
+        }
+    }
 }
