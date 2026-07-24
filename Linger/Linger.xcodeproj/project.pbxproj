@@ -106,7 +106,7 @@
 		56D1DD0629284AA5A9F640AF /* UserStatsBucketTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserStatsBucketTests.swift; sourceTree = "<group>"; };
 		5863EE6EA48284262AF01FC1 /* MediaItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaItem.swift; sourceTree = "<group>"; };
 		59CD3FC1DD096A6759334689 /* DayImmersiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayImmersiveView.swift; sourceTree = "<group>"; };
-		5CFDD9E2DB2CF76D8588194E /* Linger.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Linger.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5CFDD9E2DB2CF76D8588194E /* Linger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Linger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5EE2024A8B856AA25A2C397A /* StatsBucket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsBucket.swift; sourceTree = "<group>"; };
 		63494708CBF362272F46BD71 /* MediaKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaKind.swift; sourceTree = "<group>"; };
 		63F62ADE6EDB6C76E49605A6 /* MainTabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabTests.swift; sourceTree = "<group>"; };
@@ -438,7 +438,6 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					650AD04C3FD8C2C625921A50 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -668,7 +667,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = JM72M7Y2SH;
 				INFOPLIST_FILE = Linger/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Linger;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Linger 需要相册权限以管理你标记删除的照片。";
@@ -692,7 +691,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = JM72M7Y2SH;
 				INFOPLIST_FILE = Linger/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Linger;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Linger 需要相册权限以管理你标记删除的照片。";

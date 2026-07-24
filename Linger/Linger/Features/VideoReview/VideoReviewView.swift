@@ -8,15 +8,22 @@ struct VideoReviewView: View {
     @EnvironmentObject private var statsStore: StatsStore
     @EnvironmentObject private var preferencesStore: PreferencesStore
 
+    /// 当前是否为可见 Tab；离开时暂停播放，避免后台空转
+    var isActive: Bool = true
+
     @StateObject private var viewModel: VideoReviewViewModel
     @State private var shareItems: [Any] = []
     @State private var showShareSheet = false
+    /// 首帧后再挂播放器，避免点 Tab 当帧同步创建 AVPlayer 造成卡顿
+    @State private var shouldAttachPlayer = false
 
     init(
         photoLibrary: PhotoLibraryServing,
         statsStore: StatsStore,
-        preferencesStore: PreferencesStore
+        preferencesStore: PreferencesStore,
+        isActive: Bool = true
     ) {
+        self.isActive = isActive
         _viewModel = StateObject(
             wrappedValue: VideoReviewViewModel(
                 photoLibrary: photoLibrary,
@@ -44,8 +51,19 @@ struct VideoReviewView: View {
             }
         }
         .task {
-            if viewModel.phase == .loading && viewModel.items.isEmpty {
+            // 预挂载时即可后台抽组，不必等用户点进视频 Tab
+            if viewModel.items.isEmpty {
                 await viewModel.start()
+            }
+        }
+        .task(id: isActive) {
+            if isActive {
+                // 让 Tab 切换先完成绘制，再挂 AVPlayer
+                await Task.yield()
+                try? await Task.sleep(nanoseconds: 16_000_000)
+                shouldAttachPlayer = true
+            } else {
+                shouldAttachPlayer = false
             }
         }
         .sheet(isPresented: $showShareSheet) {
@@ -56,16 +74,24 @@ struct VideoReviewView: View {
     private var browsingContent: some View {
         ZStack {
             if let item = viewModel.currentItem {
-                VideoPreviewView(
-                    localIdentifier: item.id,
-                    loopShortPreview: false,
-                    progress: Binding(
-                        get: { viewModel.playbackProgress },
-                        set: { viewModel.playbackProgress = $0 }
+                if isActive && shouldAttachPlayer {
+                    VideoPreviewView(
+                        localIdentifier: item.id,
+                        loopShortPreview: false,
+                        progress: Binding(
+                            get: { viewModel.playbackProgress },
+                            set: { viewModel.playbackProgress = $0 }
+                        )
                     )
-                )
-                .ignoresSafeArea()
-                .id(item.id)
+                    .ignoresSafeArea()
+                    .id(item.id)
+                } else {
+                    // 占位：预热完成但未激活 / 等待首帧，保持黑底不闪白
+                    Color.black.ignoresSafeArea()
+                    if isActive {
+                        ProgressView().tint(.white)
+                    }
+                }
             }
 
             // 右侧操作栏

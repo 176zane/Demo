@@ -18,65 +18,141 @@ enum MainTab: Hashable, CaseIterable {
         }
     }
 
-    /// 与页面语义一致的 SF Symbol 名称。
+    /// 与截图液体玻璃 Dock 一致的 SF Symbol
     var systemImage: String {
         switch self {
         case .photos:
-            return "photo.on.rectangle.angled"
+            return "square.stack.fill"
         case .videos:
-            return "play.rectangle.fill"
+            return "play.square.fill"
         case .stats:
-            return "chart.bar.fill"
+            return "person.fill"
         }
     }
 }
 
-/// 悬浮在主内容上方的玻璃胶囊导航栏。
+/// 悬浮液体玻璃胶囊 TabBar（iOS 26+ 使用系统 Liquid Glass；低版本回退毛玻璃）
 struct FloatingTabBar: View {
     @Binding var selection: MainTab
+    @Namespace private var selectionNamespace
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(MainTab.allCases, id: \.self) { tab in
-                tabButton(tab)
+        Group {
+            if #available(iOS 26.0, *) {
+                liquidGlassBar
+            } else {
+                legacyGlassBar
             }
         }
-        .padding(6)
-        .background(.ultraThinMaterial, in: Capsule())
-        .background(Color.black.opacity(0.34), in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(.white.opacity(0.14), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.32), radius: 18, y: 8)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 28)
     }
 
-    private func tabButton(_ tab: MainTab) -> some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selection = tab
-            }
-        } label: {
-            VStack(spacing: 3) {
-                Image(systemName: tab.systemImage)
-                    .font(.system(size: 17, weight: .semibold))
-                Text(tab.title)
-                    .font(.caption2.weight(.semibold))
-            }
-            .foregroundStyle(selection == tab ? Color.white : Color.white.opacity(0.58))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .background {
-                if selection == tab {
-                    Capsule()
-                        .fill(Color.white.opacity(0.18))
+    // MARK: - iOS 26 Liquid Glass
+
+    @available(iOS 26.0, *)
+    private var liquidGlassBar: some View {
+        GlassEffectContainer(spacing: 10) {
+            HStack(spacing: 2) {
+                ForEach(MainTab.allCases, id: \.self) { tab in
+                    liquidTabButton(tab)
                 }
             }
-            .contentShape(Rectangle())
+            .padding(5)
+            .glassEffect(.regular.interactive(), in: .capsule)
+        }
+        .shadow(color: .black.opacity(0.28), radius: 22, y: 10)
+    }
+
+    @available(iOS 26.0, *)
+    private func liquidTabButton(_ tab: MainTab) -> some View {
+        let selected = selection == tab
+        return Button {
+            // 仅更新选中态；指示器局部动画，不带动整页
+            selection = tab
+        } label: {
+            tabLabel(tab, selected: selected)
+        }
+        .buttonStyle(.plain)
+        .background {
+            if selected {
+                Capsule()
+                    .fill(Color.clear)
+                    .glassEffect(.regular.tint(.white.opacity(0.35)), in: .capsule)
+                    .matchedGeometryEffect(id: "tabSelection", in: selectionNamespace)
+            }
+        }
+        .accessibilityLabel(tab.title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .animation(.easeOut(duration: 0.18), value: selection)
+    }
+
+    // MARK: - iOS 17–25 回退（轻量，避免 Material 动画卡顿）
+
+    private var legacyGlassBar: some View {
+        HStack(spacing: 2) {
+            ForEach(MainTab.allCases, id: \.self) { tab in
+                legacyTabButton(tab)
+            }
+        }
+        .padding(5)
+        .background {
+            Capsule()
+                .fill(Color.black.opacity(0.55))
+                .background {
+                    Capsule().fill(.thinMaterial)
+                }
+                .overlay {
+                    Capsule()
+                        .stroke(Color.white.opacity(0.16), lineWidth: 0.7)
+                }
+        }
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
+    }
+
+    private func legacyTabButton(_ tab: MainTab) -> some View {
+        let selected = selection == tab
+        return Button {
+            selection = tab
+        } label: {
+            tabLabel(tab, selected: selected)
+                .background {
+                    if selected {
+                        Capsule()
+                            .fill(Color.white.opacity(0.16))
+                            .matchedGeometryEffect(id: "tabSelection", in: selectionNamespace)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.title)
-        .accessibilityAddTraits(selection == tab ? .isSelected : [])
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .animation(.easeOut(duration: 0.18), value: selection)
+    }
+
+    private func tabLabel(_ tab: MainTab, selected: Bool) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: tab.systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(selected ? AnyShapeStyle(activeIconGradient) : AnyShapeStyle(Color.white.opacity(0.58)))
+            Text(tab.title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(selected ? Color.white : Color.white.opacity(0.55))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .contentShape(Capsule())
+    }
+
+    /// 选中态图标：柔和蓝紫渐变（对齐参考截图）
+    private var activeIconGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.55, green: 0.62, blue: 1.0),
+                Color(red: 0.42, green: 0.38, blue: 0.95)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 }

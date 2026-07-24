@@ -37,16 +37,29 @@ final class PhotoLibraryService: PhotoLibraryServing {
         excluding excludeIDs: Set<String>
     ) async throws -> [MediaItem] {
         try ensureAuthorized()
-        let candidates = collectCandidates(
-            count: count,
-            allowedKinds: allowedKinds,
-            excluding: excludeIDs
-        )
+
+        // 自拍集合仅在非「纯视频」池需要；视频 Tab 可跳过，减少首点卡顿
+        let selfieIDs: Set<String> = (allowedKinds == [.video]) ? [] : selfieIdentifierSet()
+        let recentSnapshot = recentStore.ids
+        let want = count
+        let kinds = allowedKinds
+        let exclude = excludeIDs
+
+        // PhotoKit 枚举放到后台，避免首次点视频 Tab 卡主线程
+        let candidates = await Task.detached(priority: .userInitiated) {
+            Self.collectCandidatesDetached(
+                count: want,
+                allowedKinds: kinds,
+                excluding: exclude,
+                selfieIDs: selfieIDs
+            )
+        }.value
+
         let sampled = RandomSampler.sample(
             from: candidates,
             count: count,
             excluding: excludeIDs,
-            recentIDs: recentStore.ids
+            recentIDs: recentSnapshot
         )
         if sampled.isEmpty {
             throw PhotoLibraryError.emptyLibrary
@@ -210,22 +223,20 @@ final class PhotoLibraryService: PhotoLibraryServing {
         }
     }
 
-    /// 收集抽样候选：小库全量匹配；大库随机索引探测以控制内存
-    private func collectCandidates(
+    /// 后台可调用的候选收集（纯 PhotoKit，不触碰 MainActor 状态）
+    nonisolated private static func collectCandidatesDetached(
         count: Int,
         allowedKinds: Set<MediaKind>,
-        excluding excludeIDs: Set<String>
+        excluding excludeIDs: Set<String>,
+        selfieIDs: Set<String>
     ) -> [MediaItem] {
-        let options = PHFetchOptions()
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        let fetchResult = PHAsset.fetchAssets(with: options)
+        let fetchResult = fetchResult(for: allowedKinds)
         let total = fetchResult.count
         guard total > 0 else { return [] }
 
-        let selfieIDs = selfieIdentifierSet()
-        let targetPool = max(count * Self.candidateMultiplier, count)
+        let targetPool = max(count * candidateMultiplier, count)
 
-        if total <= Self.fullScanThreshold {
+        if total <= fullScanThreshold {
             return enumerateAllMatching(
                 fetchResult: fetchResult,
                 allowedKinds: allowedKinds,
@@ -243,14 +254,27 @@ final class PhotoLibraryService: PhotoLibraryServing {
         )
     }
 
-    private func enumerateAllMatching(
+    /// 按筛选收窄 PhotoKit 查询：纯视频 / 纯图片走 mediaType，显著快于全库扫描
+    nonisolated private static func fetchResult(for allowedKinds: Set<MediaKind>) -> PHFetchResult<PHAsset> {
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        if allowedKinds == [.video] {
+            return PHAsset.fetchAssets(with: .video, options: options)
+        }
+        if !allowedKinds.contains(.video) {
+            return PHAsset.fetchAssets(with: .image, options: options)
+        }
+        return PHAsset.fetchAssets(with: options)
+    }
+
+    nonisolated private static func enumerateAllMatching(
         fetchResult: PHFetchResult<PHAsset>,
         allowedKinds: Set<MediaKind>,
         selfieIDs: Set<String>
     ) -> [MediaItem] {
         var items: [MediaItem] = []
         fetchResult.enumerateObjects { asset, _, _ in
-            if let item = Self.makeMediaItem(from: asset, selfieIDs: selfieIDs),
+            if let item = makeMediaItem(from: asset, selfieIDs: selfieIDs),
                allowedKinds.contains(item.mediaKind) {
                 items.append(item)
             }
@@ -259,7 +283,7 @@ final class PhotoLibraryService: PhotoLibraryServing {
     }
 
     /// 大相册：随机抽索引构建候选池，避免 O(n) 全量装载
-    private func sampleByRandomIndex(
+    nonisolated private static func sampleByRandomIndex(
         fetchResult: PHFetchResult<PHAsset>,
         total: Int,
         targetPool: Int,
@@ -270,7 +294,6 @@ final class PhotoLibraryService: PhotoLibraryServing {
         var picked: [MediaItem] = []
         var seenIndexes = Set<Int>()
         var seenIDs = Set<String>()
-        // 限制尝试次数，防止筛选极严时空转
         let maxAttempts = min(total, max(targetPool * 6, 200))
         var attempts = 0
 
@@ -280,7 +303,7 @@ final class PhotoLibraryService: PhotoLibraryServing {
             if !seenIndexes.insert(index).inserted { continue }
 
             let asset = fetchResult.object(at: index)
-            guard let item = Self.makeMediaItem(from: asset, selfieIDs: selfieIDs),
+            guard let item = makeMediaItem(from: asset, selfieIDs: selfieIDs),
                   allowedKinds.contains(item.mediaKind),
                   !excludeIDs.contains(item.id),
                   seenIDs.insert(item.id).inserted else {
@@ -341,7 +364,7 @@ final class PhotoLibraryService: PhotoLibraryServing {
         }
     }
 
-    static func makeMediaItem(from asset: PHAsset, selfieIDs: Set<String>) -> MediaItem? {
+    nonisolated static func makeMediaItem(from asset: PHAsset, selfieIDs: Set<String>) -> MediaItem? {
         let kind = detectKind(for: asset, selfieIDs: selfieIDs)
         return MediaItem(
             id: asset.localIdentifier,
@@ -353,7 +376,7 @@ final class PhotoLibraryService: PhotoLibraryServing {
         )
     }
 
-    static func detectKind(for asset: PHAsset, selfieIDs: Set<String>) -> MediaKind {
+    nonisolated static func detectKind(for asset: PHAsset, selfieIDs: Set<String>) -> MediaKind {
         if asset.mediaType == .video {
             return .video
         }
@@ -372,7 +395,7 @@ final class PhotoLibraryService: PhotoLibraryServing {
         return .photo
     }
 
-    private static func isAnimatedGIF(_ asset: PHAsset) -> Bool {
+    nonisolated private static func isAnimatedGIF(_ asset: PHAsset) -> Bool {
         let resources = PHAssetResource.assetResources(for: asset)
         return resources.contains { resource in
             let uti = resource.uniformTypeIdentifier.lowercased()

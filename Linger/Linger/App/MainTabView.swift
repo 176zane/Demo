@@ -7,32 +7,53 @@ struct MainTabView: View {
     @EnvironmentObject private var preferencesStore: PreferencesStore
 
     @State private var selectedTab: MainTab = .photos
+    /// 已访问过的 Tab 保活，避免每次点击都重建 ViewModel / PhotoKit / AVPlayer
+    @State private var loadedTabs: Set<MainTab> = [.photos]
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            tabContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack {
+                if loadedTabs.contains(.photos) {
+                    PhotoReviewContainerView()
+                        .opacity(selectedTab == .photos ? 1 : 0)
+                        .allowsHitTesting(selectedTab == .photos)
+                }
+
+                if loadedTabs.contains(.videos) {
+                    VideoReviewView(
+                        photoLibrary: appState.photoLibrary,
+                        statsStore: statsStore,
+                        preferencesStore: preferencesStore,
+                        isActive: selectedTab == .videos
+                    )
+                    .opacity(selectedTab == .videos ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .videos)
+                }
+
+                if loadedTabs.contains(.stats) {
+                    StatsView()
+                        .opacity(selectedTab == .stats ? 1 : 0)
+                        .allowsHitTesting(selectedTab == .stats)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 禁止选中态动画波及整页内容，消除 iOS 18 切换卡顿
+            .transaction { $0.animation = nil }
 
             FloatingTabBar(selection: $selectedTab)
-                .padding(.bottom, 8)
+                .padding(.bottom, 18)
+                .padding(.top, 4)
         }
         .background(canvas)
         .ignoresSafeArea(edges: .bottom)
-    }
-
-    @ViewBuilder
-    private var tabContent: some View {
-        switch selectedTab {
-        case .photos:
-            PhotoReviewContainerView()
-        case .videos:
-            VideoReviewView(
-                photoLibrary: appState.photoLibrary,
-                statsStore: statsStore,
-                preferencesStore: preferencesStore
-            )
-        case .stats:
-            StatsView()
+        .onChange(of: selectedTab) { _, tab in
+            loadedTabs.insert(tab)
+        }
+        .task {
+            // 首屏稳定后预挂载视频/统计 Tab，并让视频先完成后台抽组
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            loadedTabs.insert(.videos)
+            loadedTabs.insert(.stats)
         }
     }
 
@@ -43,39 +64,5 @@ struct MainTabView: View {
             endPoint: .bottom
         )
         .ignoresSafeArea()
-    }
-}
-
-/// 后续任务接入正式页面前使用的轻量占位内容。
-private struct PlaceholderTabView: View {
-    let systemImage: String
-    let title: String
-    let message: String
-
-    var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [LingerTheme.canvasTop, LingerTheme.canvasBottom],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-
-            VStack(spacing: 14) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 42, weight: .semibold))
-                    .foregroundStyle(LingerTheme.accentBlue)
-
-                Text(title)
-                    .font(.title2.bold())
-                    .foregroundStyle(.white)
-
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.58))
-            }
-            .padding(.bottom, 72)
-        }
-        .accessibilityElement(children: .combine)
     }
 }
