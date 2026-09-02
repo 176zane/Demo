@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import Photos
 
 /// PhotoKit 实现：授权、随机抽组、按日查询、删除
@@ -87,12 +88,20 @@ final class PhotoLibraryService: PhotoLibraryServing {
 
         let selfieIDs = selfieIdentifierSet()
         let fetchResult = PHAsset.fetchAssets(with: options)
-        var items: [MediaItem] = []
+        var assets: [PHAsset] = []
         fetchResult.enumerateObjects { asset, _, _ in
-            if let item = Self.makeMediaItem(from: asset, selfieIDs: selfieIDs),
-               allowedKinds.contains(item.mediaKind) {
-                items.append(item)
+            assets.append(asset)
+        }
+
+        // 按 EXIF 朝向纠正宽高：侧向拍摄的竖图像素常是横的，不纠正会进错格子
+        var items: [MediaItem] = []
+        items.reserveCapacity(assets.count)
+        for asset in assets {
+            guard let base = Self.makeMediaItem(from: asset, selfieIDs: selfieIDs),
+                  allowedKinds.contains(base.mediaKind) else {
+                continue
             }
+            items.append(await Self.itemWithOrientedPixels(base, asset: asset))
         }
         return items
     }
@@ -361,6 +370,44 @@ final class PhotoLibraryService: PhotoLibraryServing {
         case .authorized: return .authorized
         case .limited: return .limited
         @unknown default: return .denied
+        }
+    }
+
+    /// 读出朝向后，把侧向拍摄的宽高对调，供「回到那天」按横竖选格子
+    nonisolated static func itemWithOrientedPixels(_ item: MediaItem, asset: PHAsset) async -> MediaItem {
+        let orientation = await imageOrientation(for: asset)
+        let oriented = DayGridLayout.orientedDimensions(
+            pixelWidth: item.pixelWidth,
+            pixelHeight: item.pixelHeight,
+            orientation: orientation
+        )
+        return MediaItem(
+            id: item.id,
+            mediaKind: item.mediaKind,
+            creationDate: item.creationDate,
+            isFavorite: item.isFavorite,
+            pixelWidth: oriented.width,
+            pixelHeight: oriented.height
+        )
+    }
+
+    nonisolated static func imageOrientation(for asset: PHAsset) async -> CGImagePropertyOrientation {
+        await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.isSynchronous = false
+            options.deliveryMode = .fastFormat
+            options.resizeMode = .fast
+            options.isNetworkAccessAllowed = false
+            PHImageManager.default().requestImageDataAndOrientation(
+                for: asset,
+                options: options
+            ) { _, _, orientation, info in
+                if info?[PHImageCancelledKey] as? Bool == true {
+                    continuation.resume(returning: .up)
+                    return
+                }
+                continuation.resume(returning: orientation)
+            }
         }
     }
 

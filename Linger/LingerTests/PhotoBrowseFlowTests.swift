@@ -1,3 +1,4 @@
+import ImageIO
 import XCTest
 @testable import Linger
 
@@ -157,6 +158,41 @@ final class PhotoBrowseFlowTests: XCTestCase {
         )
     }
 
+    /// 捏合缩放锁在 0.6–1.5，中间值原样跟手
+    func testPinchScaleClampsToAllowedRange() {
+        XCTAssertEqual(PhotoBrowseLayout.pinchScale(for: 1), 1, accuracy: 0.001)
+        XCTAssertEqual(PhotoBrowseLayout.pinchScale(for: 1.2), 1.2, accuracy: 0.001)
+        XCTAssertEqual(PhotoBrowseLayout.pinchScale(for: 0.8), 0.8, accuracy: 0.001)
+        XCTAssertEqual(PhotoBrowseLayout.pinchScale(for: 0.3), PhotoBrowseLayout.pinchMinScale, accuracy: 0.001)
+        XCTAssertEqual(PhotoBrowseLayout.pinchScale(for: 2.4), PhotoBrowseLayout.pinchMaxScale, accuracy: 0.001)
+        XCTAssertEqual(PhotoBrowseLayout.pinchMinScale, 0.6, accuracy: 0.001)
+        XCTAssertEqual(PhotoBrowseLayout.pinchMaxScale, 1.5, accuracy: 0.001)
+    }
+
+    /// 捏合缩小过阈值才进「回到那天」，放大或轻捏松手都该回弹
+    func testPinchCommitsOnlyWhenShrunkPastThreshold() {
+        XCTAssertTrue(PhotoBrowseLayout.shouldOpenDayGrid(forPinch: 0.7))
+        XCTAssertTrue(PhotoBrowseLayout.shouldOpenDayGrid(forPinch: 0.6))
+        XCTAssertFalse(PhotoBrowseLayout.shouldOpenDayGrid(forPinch: 0.85))
+        XCTAssertFalse(PhotoBrowseLayout.shouldOpenDayGrid(forPinch: 1.0))
+        XCTAssertFalse(PhotoBrowseLayout.shouldOpenDayGrid(forPinch: 1.4))
+    }
+
+    /// 往里捏时顶底栏跟着淡，放大时栏保持不透明
+    func testPinchChromeFadesOnlyWhenPinchingIn() {
+        XCTAssertEqual(PhotoBrowseLayout.pinchChromeOpacity(for: 1), 1, accuracy: 0.001)
+        XCTAssertEqual(PhotoBrowseLayout.pinchChromeOpacity(for: 1.4), 1, accuracy: 0.001)
+        XCTAssertEqual(
+            PhotoBrowseLayout.pinchChromeOpacity(for: PhotoBrowseLayout.pinchMinScale),
+            0,
+            accuracy: 0.001
+        )
+        let mid = (PhotoBrowseLayout.pinchMinScale + 1) / 2
+        let opacity = PhotoBrowseLayout.pinchChromeOpacity(for: mid)
+        XCTAssertGreaterThan(opacity, 0.2)
+        XCTAssertLessThan(opacity, 0.8)
+    }
+
     /// 更瘦的竖图以高度为限，宽度必须小于可用宽（左右大于最小 inset）
     func testFittedSizePortraitKeepsWidthInsideBounds() {
         let bounds = CGSize(width: 360, height: 500)
@@ -311,5 +347,215 @@ final class PhotoBrowseFlowTests: XCTestCase {
         XCTAssertNil(
             FanCardHitTesting.hitIndex(at: miss, canvasSize: canvas, cards: cards, revealed: true)
         )
+    }
+
+    /// 同一行高下，横格 16:9 必须比竖格 9:16 宽
+    func testDayGridLandscapeCellWiderThanPortrait() {
+        let rowHeight: CGFloat = 200
+        let landscape = DayGridLayout.cellWidth(aspect: DayGridLayout.landscapeAspect, rowHeight: rowHeight)
+        let portrait = DayGridLayout.cellWidth(aspect: DayGridLayout.portraitAspect, rowHeight: rowHeight)
+        XCTAssertGreaterThan(landscape, portrait)
+        XCTAssertEqual(landscape, rowHeight * (16.0 / 9.0), accuracy: 0.5)
+        XCTAssertEqual(portrait, rowHeight * (9.0 / 16.0), accuracy: 0.5)
+        XCTAssertEqual(landscape / rowHeight, 16.0 / 9.0, accuracy: 0.01)
+        XCTAssertEqual(portrait / rowHeight, 9.0 / 16.0, accuracy: 0.01)
+    }
+
+    /// 不管原图是 4:3 还是 3:4，格子只收成 16:9 / 9:16
+    func testDayGridSnapsPhotoAspectToTwoSpecs() {
+        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: 4.0 / 3.0), 16.0 / 9.0, accuracy: 0.001)
+        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: 16.0 / 9.0), 16.0 / 9.0, accuracy: 0.001)
+        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: 1.0), 9.0 / 16.0, accuracy: 0.001)
+        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: 3.0 / 4.0), 9.0 / 16.0, accuracy: 0.001)
+        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: 9.0 / 16.0), 9.0 / 16.0, accuracy: 0.001)
+    }
+
+    /// 侧向 EXIF 要把像素宽高对调，竖拍才能进 9:16
+    func testDayGridOrientsSidewaysPixelsBeforePickingCell() {
+        let swapped = DayGridLayout.orientedDimensions(
+            pixelWidth: 4032,
+            pixelHeight: 3024,
+            orientation: .right
+        )
+        XCTAssertEqual(swapped.width, 3024)
+        XCTAssertEqual(swapped.height, 4032)
+        XCTAssertEqual(
+            DayGridLayout.CellSpec.forPhoto(pixelWidth: swapped.width, pixelHeight: swapped.height),
+            .portrait
+        )
+
+        let landscape = DayGridLayout.orientedDimensions(
+            pixelWidth: 4032,
+            pixelHeight: 3024,
+            orientation: .up
+        )
+        XCTAssertEqual(
+            DayGridLayout.CellSpec.forPhoto(pixelWidth: landscape.width, pixelHeight: landscape.height),
+            .landscape
+        )
+    }
+
+    /// 资源朝向直接决定格子：横 16:9，竖 9:16
+    func testDayGridCellSpecFollowsPhotoOrientation() {
+        XCTAssertEqual(DayGridLayout.CellSpec.forPhoto(pixelWidth: 1920, pixelHeight: 1080), .landscape)
+        XCTAssertEqual(DayGridLayout.CellSpec.forPhoto(pixelWidth: 1080, pixelHeight: 1920), .portrait)
+        let landscapeItem = MediaItem(
+            id: "h",
+            mediaKind: .photo,
+            creationDate: Date(),
+            pixelWidth: 4000,
+            pixelHeight: 2250
+        )
+        let portraitItem = MediaItem(
+            id: "v",
+            mediaKind: .photo,
+            creationDate: Date(),
+            pixelWidth: 2250,
+            pixelHeight: 4000
+        )
+        XCTAssertTrue(landscapeItem.isLandscape)
+        XCTAssertFalse(portraitItem.isLandscape)
+        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: landscapeItem.displayAspectRatio), 16.0 / 9.0, accuracy: 0.001)
+        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: portraitItem.displayAspectRatio), 9.0 / 16.0, accuracy: 0.001)
+    }
+
+    /// 砌砖结果里只许出现这两种宽高比（含提示卡）
+    func testDayGridPackedCellsUseOnlySixteenNineAndNineSixteen() {
+        let packed = DayGridLayout.packPhotosAndHints(
+            photoAspects: [("wide", 4.0 / 3.0), ("tall", 2.0 / 3.0), ("square", 1.0)],
+            rowHeight: 160
+        )
+        let cells = packed.rows.flatMap { $0 }
+        XCTAssertFalse(cells.isEmpty)
+        for cell in cells {
+            let aspect = cell.width / cell.height
+            let isLandscape = abs(aspect - 16.0 / 9.0) < 0.02
+            let isPortrait = abs(aspect - 9.0 / 16.0) < 0.02
+            XCTAssertTrue(isLandscape || isPortrait, "unexpected aspect \(aspect) for \(cell.id)")
+        }
+    }
+
+    /// 四张及以上应铺满两排，较短的一排接下一张（砌砖）
+    func testDayGridPacksIntoTwoRows() {
+        let aspects: [(id: String, aspect: CGFloat)] = [
+            ("a", 16.0 / 9.0),
+            ("b", 3.0 / 4.0),
+            ("c", 16.0 / 9.0),
+            ("d", 3.0 / 4.0)
+        ]
+        let packed = DayGridLayout.pack(aspects: aspects, rowHeight: 160)
+        XCTAssertEqual(packed.rows.count, 2)
+        let total = packed.rows[0].count + packed.rows[1].count
+        XCTAssertEqual(total, 4)
+        XCTAssertFalse(packed.rows[0].isEmpty)
+        XCTAssertFalse(packed.rows[1].isEmpty)
+        XCTAssertGreaterThan(packed.contentWidth, 0)
+    }
+
+    /// 行高按屏宽收一档，两排加间距不能接近整屏高
+    func testDayGridRowHeightStaysCompact() {
+        let height = DayGridLayout.rowHeight(canvasWidth: 393)
+        XCTAssertLessThan(height, 180)
+        XCTAssertGreaterThan(height, 110)
+        let twoRows = height * 2 + DayGridLayout.spacing
+        XCTAssertLessThan(twoRows, 400)
+    }
+
+    /// 提示卡会垫进两排，当天只有一张照片时下排也不该空着
+    func testDayGridPacksHintsSoBothRowsFill() {
+        let packed = DayGridLayout.packPhotosAndHints(
+            photoAspects: [("only", 16.0 / 9.0)],
+            rowHeight: 140
+        )
+        XCTAssertFalse(packed.rows[0].isEmpty)
+        XCTAssertFalse(packed.rows[1].isEmpty)
+        XCTAssertTrue(packed.rows.joined().contains { DayGridLayout.isHintID($0.id) })
+    }
+
+    /// 地点拼成「省市区」，相邻重复去掉
+    func testPhotoPlaceNameJoinsProvinceCityDistrict() {
+        XCTAssertEqual(
+            PhotoPlaceName.format(
+                administrativeArea: "广东省",
+                locality: "广州市",
+                subLocality: "番禺区"
+            ),
+            "广东省广州市番禺区"
+        )
+        XCTAssertEqual(
+            PhotoPlaceName.format(
+                administrativeArea: "北京市",
+                locality: "北京市",
+                subLocality: "朝阳区"
+            ),
+            "北京市朝阳区"
+        )
+        XCTAssertNil(
+            PhotoPlaceName.format(administrativeArea: nil, locality: nil, subLocality: nil)
+        )
+    }
+
+    /// 信息页底图铺满屏宽，竖图高度封顶，避免占满整屏
+    func testInfoBackdropHeightUsesFullWidthAndCapsPortrait() {
+        let landscape = DayPhotoDetailLayout.infoBackdropHeight(
+            aspect: 16.0 / 9.0,
+            canvasWidth: 393,
+            canvasHeight: 852
+        )
+        XCTAssertEqual(landscape, 393.0 / (16.0 / 9.0), accuracy: 1)
+        let portrait = DayPhotoDetailLayout.infoBackdropHeight(
+            aspect: 9.0 / 16.0,
+            canvasWidth: 393,
+            canvasHeight: 852
+        )
+        XCTAssertLessThan(portrait, 852 * 0.42)
+        XCTAssertGreaterThan(portrait, 160)
+    }
+
+    /// 信息页下拉：位移够或甩得够快才回到详情，轻拉要弹回
+    func testInfoPageDismissesOnPullDownThreshold() {
+        XCTAssertTrue(
+            DayPhotoDetailLayout.shouldDismissInfo(translationHeight: 120, predictedHeight: 120)
+        )
+        XCTAssertTrue(
+            DayPhotoDetailLayout.shouldDismissInfo(translationHeight: 40, predictedHeight: 220)
+        )
+        XCTAssertFalse(
+            DayPhotoDetailLayout.shouldDismissInfo(translationHeight: 40, predictedHeight: 50)
+        )
+        XCTAssertTrue(DayPhotoDetailLayout.isInfoScrollAtTop(0))
+        XCTAssertTrue(DayPhotoDetailLayout.isInfoScrollAtTop(-4))
+        XCTAssertFalse(DayPhotoDetailLayout.isInfoScrollAtTop(-40))
+    }
+
+    /// 相片信息页的参数/体积/设备文案跟截图一致
+    func testPhotoInfoFormattingMatchesReference() {
+        XCTAssertEqual(PhotoInfoFormatting.apertureText(1.6), "f1.6")
+        XCTAssertEqual(PhotoInfoFormatting.shutterText(1.0 / 5814.0), "1/5814 s")
+        XCTAssertEqual(PhotoInfoFormatting.isoText(32), "ISO 32")
+        XCTAssertEqual(PhotoInfoFormatting.focalText(26), "26 mm")
+        XCTAssertEqual(PhotoInfoFormatting.fileSizeText(bytes: 3_900_000), "3.9 MB")
+        XCTAssertEqual(
+            PhotoInfoFormatting.deviceText(make: "Apple", model: "iPhone 12"),
+            "Apple iPhone 12"
+        )
+        var components = DateComponents()
+        components.year = 2022
+        components.month = 8
+        components.day = 14
+        components.hour = 14
+        components.minute = 15
+        let day = Calendar(identifier: .gregorian).date(from: components)!
+        XCTAssertEqual(PhotoInfoFormatting.fullDateTimeText(day), "2022年8月14日 星期日 14:15")
+    }
+
+    /// 回到那天日期文案与图示一致：2018/5/30
+    func testDayPageDateTextUsesSlashFormat() {
+        var components = DateComponents()
+        components.year = 2018
+        components.month = 5
+        components.day = 30
+        let day = Calendar(identifier: .gregorian).date(from: components)!
+        XCTAssertEqual(PhotoBrowseLayout.dayPageDateText(day), "2018/5/30")
     }
 }

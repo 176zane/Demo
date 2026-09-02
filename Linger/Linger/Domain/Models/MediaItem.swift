@@ -19,6 +19,11 @@ struct MediaItem: Identifiable, Hashable, Sendable {
         return CGFloat(pixelWidth) / CGFloat(pixelHeight)
     }
 
+    /// 宽大于高才算横图；正方形、缺尺寸都当竖图
+    var isLandscape: Bool {
+        pixelWidth > 0 && pixelHeight > 0 && pixelWidth > pixelHeight
+    }
+
     init(
         id: String,
         mediaKind: MediaKind,

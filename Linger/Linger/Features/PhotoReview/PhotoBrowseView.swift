@@ -1,3 +1,4 @@
+import ImageIO
 import Photos
 import PortalTransitions
 import SwiftUI
@@ -28,6 +29,19 @@ enum PhotoBrowseLayout {
     static let swipeUpCommitDistance: CGFloat = 120
     /// 松手后继续飞出顶部的时长
     static let swipeUpFlyDuration: TimeInterval = 0.38
+
+    /// 双指捏合：照片跟手缩放的下限 / 上限
+    static let pinchMinScale: CGFloat = 0.6
+    static let pinchMaxScale: CGFloat = 1.5
+    /// 松手时小于此值才进「回到那天」，否则弹回 1
+    static let pinchCommitScale: CGFloat = 0.85
+    /// 松手回弹，比系统默认弹簧软，避免「啪」一下回去
+    static let pinchBounceBackAnimation: Animation = .spring(response: 0.42, dampingFraction: 0.86)
+    /// 「回到那天」叠在详情上淡入淡出，不用系统 cover 从底部滑上来
+    static let dayGridFadeDuration: TimeInterval = 0.42
+    static let dayGridFadeAnimation: Animation = .easeInOut(duration: dayGridFadeDuration)
+    /// 点信息：照片上移放大铺到顶，跟信息页一起走
+    static let infoPhotoMoveAnimation: Animation = .spring(response: 0.48, dampingFraction: 0.88)
 
     /// 上划位移 → 缩放：未上划为 1，最多缩到 80%
     static func swipeUpScale(forOffset offset: CGFloat) -> CGFloat {
@@ -108,6 +122,164 @@ enum PhotoBrowseLayout {
         }
         return currentID ?? intended
     }
+
+    /// 捏合倍率锁在 0.6–1.5，避免缩没或放得撑破屏幕
+    static func pinchScale(for magnification: CGFloat) -> CGFloat {
+        min(pinchMaxScale, max(pinchMinScale, magnification))
+    }
+
+    /// 只有明显捏小才进当天网格；放大或轻捏都当取消
+    static func shouldOpenDayGrid(forPinch magnification: CGFloat) -> Bool {
+        magnification < pinchCommitScale
+    }
+
+    /// 往里捏时顶底栏跟着淡出；放大保持不透明，避免栏跟着照片涨
+    static func pinchChromeOpacity(for scale: CGFloat) -> CGFloat {
+        guard scale < 1 else { return 1 }
+        let span = 1 - pinchMinScale
+        guard span > 0 else { return 1 }
+        return min(1, max(0, (scale - pinchMinScale) / span))
+    }
+
+    /// 「回到那天」顶栏日期，与设计稿一致：2018/5/30
+    static func dayPageDateText(_ day: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy/M/d"
+        return formatter.string(from: day)
+    }
+
+    #if DEBUG
+    /// 验证钩子：`-uiTestDayGridDate=2012-08-08` 强制打开指定自然日
+    static func debugOverrideDay() -> Date? {
+        guard let raw = ProcessInfo.processInfo.arguments
+            .first(where: { $0.hasPrefix("-uiTestDayGridDate=") })?
+            .split(separator: "=").last else {
+            return nil
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: String(raw))
+    }
+    #endif
+}
+
+/// 「回到那天」两排横滑：横图宽格、竖图窄格，较短的一排接下一张
+enum DayGridLayout {
+    static let rowCount = 2
+    static let spacing: CGFloat = 10
+    static let cornerRadius: CGFloat = 22
+    /// 格子只有两种规格：横 16:9、竖 9:16
+    static let landscapeAspect: CGFloat = 16.0 / 9.0
+    static let portraitAspect: CGFloat = 9.0 / 16.0
+    static let hintPinchID = "hint-pinch"
+    static let hintSwipeID = "hint-swipe"
+    /// 提示卡走竖格 9:16，垫在照片后面
+    static let hintAspects: [(id: String, aspect: CGFloat)] = [
+        (hintPinchID, portraitAspect),
+        (hintSwipeID, portraitAspect)
+    ]
+
+    struct PlacedCell: Equatable, Identifiable {
+        var id: String
+        var row: Int
+        var width: CGFloat
+        var height: CGFloat
+    }
+
+    /// 行高按屏宽收一档，两排居中，不要把剩余屏幕撑满（否则一张横图会像整页大图）
+    static func rowHeight(canvasWidth: CGFloat) -> CGFloat {
+        min(168, max(118, canvasWidth * 0.38))
+    }
+
+    /// 格子规格：横图 16:9，竖图 9:16
+    enum CellSpec: Equatable {
+        case landscape
+        case portrait
+
+        var aspect: CGFloat {
+            switch self {
+            case .landscape: return DayGridLayout.landscapeAspect
+            case .portrait: return DayGridLayout.portraitAspect
+            }
+        }
+
+        /// 宽大于高 → 16:9；竖图、正方形、缺尺寸 → 9:16
+        static func forPhotoAspect(_ aspect: CGFloat) -> CellSpec {
+            aspect > 1 ? .landscape : .portrait
+        }
+
+        static func forPhoto(pixelWidth: Int, pixelHeight: Int) -> CellSpec {
+            pixelWidth > pixelHeight ? .landscape : .portrait
+        }
+    }
+
+    /// 侧向拍摄的照片像素是横的，要把宽高对调后再判断朝向
+    static func orientedDimensions(
+        pixelWidth: Int,
+        pixelHeight: Int,
+        orientation: CGImagePropertyOrientation
+    ) -> (width: Int, height: Int) {
+        switch orientation {
+        case .left, .leftMirrored, .right, .rightMirrored:
+            return (pixelHeight, pixelWidth)
+        default:
+            return (pixelWidth, pixelHeight)
+        }
+    }
+
+    static func snappedCellAspect(for photoAspect: CGFloat) -> CGFloat {
+        CellSpec.forPhotoAspect(photoAspect).aspect
+    }
+
+    /// 行高固定，宽度只按 16:9 / 9:16
+    static func cellWidth(aspect: CGFloat, rowHeight: CGFloat) -> CGFloat {
+        cellWidth(for: CellSpec.forPhotoAspect(aspect), rowHeight: rowHeight)
+    }
+
+    static func cellWidth(for spec: CellSpec, rowHeight: CGFloat) -> CGFloat {
+        max(rowHeight * spec.aspect, 1)
+    }
+
+    /// 砌砖：下一张放进当前更短的那一排，两排一起横滑
+    static func pack(
+        aspects: [(id: String, aspect: CGFloat)],
+        rowHeight: CGFloat,
+        spacing: CGFloat = spacing
+    ) -> (rows: [[PlacedCell]], contentWidth: CGFloat) {
+        var rows: [[PlacedCell]] = Array(repeating: [], count: rowCount)
+        var widths = Array(repeating: CGFloat(0), count: rowCount)
+        for item in aspects {
+            let spec = CellSpec.forPhotoAspect(item.aspect)
+            let width = cellWidth(for: spec, rowHeight: rowHeight)
+            let row = widths[0] <= widths[1] ? 0 : 1
+            if !rows[row].isEmpty {
+                widths[row] += spacing
+            }
+            rows[row].append(
+                PlacedCell(id: item.id, row: row, width: width, height: rowHeight)
+            )
+            widths[row] += width
+        }
+        return (rows, widths.max() ?? 0)
+    }
+
+    /// 照片后面接两张操作提示卡
+    static func packPhotosAndHints(
+        photoAspects: [(id: String, aspect: CGFloat)],
+        rowHeight: CGFloat
+    ) -> (rows: [[PlacedCell]], contentWidth: CGFloat) {
+        let snapped = photoAspects.map { ($0.id, snappedCellAspect(for: $0.aspect)) }
+        return pack(aspects: snapped + hintAspects, rowHeight: rowHeight)
+    }
+
+    static func isHintID(_ id: String) -> Bool {
+        id == hintPinchID || id == hintSwipeID
+    }
 }
 
 /// 全屏浏览页：横向分页滚动、上划标记删除（返回时统一删除）、捏合居中照片回到那天
@@ -125,7 +297,6 @@ struct PhotoBrowseView: View {
     let portalNamespace: Namespace.ID
     /// 返回：详情溶解，首页再播三卡入场
     var onDismiss: (MediaItem?) -> Void
-    @Namespace private var zoomNamespace
     /// 分页滚动当前居中的照片 id；进场后由 landOnStartItem 写入，避免首帧停在组头
     @State private var currentID: String?
     /// 只落地一次，避免分页重建时把用户已经滑到的页拽回去
@@ -140,6 +311,10 @@ struct PhotoBrowseView: View {
     @State private var skipInitialGradientSync = true
     @State private var isFavorite = false
     @State private var showDayGrid = false
+    /// 当前照片的捏合缩放，跟手写，松手再决定进网格或弹回
+    @State private var pinchScale: CGFloat = 1
+    /// 双指还在屏幕上，用来挡住上划和分页抢手势
+    @State private var isPinching = false
     @State private var shareItem: ShareItem?
     @State private var isPreparingShare = false
     /// 返回流程是否已处理删除（防 onDisappear 兜底重复删）
@@ -187,6 +362,8 @@ struct PhotoBrowseView: View {
             // 分页从一开始就铺满全屏，上划只是在这层里移动，不必再临时提到另一层
             pager
                 .ignoresSafeArea()
+                // 捏合时锁分页，避免双指被当成左右滑
+                .scrollDisabled(isPinching)
 
             VStack(spacing: 0) {
                 topBar
@@ -195,6 +372,8 @@ struct PhotoBrowseView: View {
                     .allowsHitTesting(false)
                 bottomBar
             }
+            .opacity(PhotoBrowseLayout.pinchChromeOpacity(for: pinchScale))
+            .allowsHitTesting(pinchScale >= 0.98)
 
             // 上划时在灵动岛 / 刘海周围铺红晕，跟手变亮，表达「要删」
             DynamicIslandDeleteGlow(
@@ -204,7 +383,28 @@ struct PhotoBrowseView: View {
             if viewModel.isDeleting {
                 deletingOverlay
             }
+
+            // 叠在详情上淡入，避免 fullScreenCover 从底部推上来
+            if showDayGrid, let item = currentItem {
+                #if DEBUG
+                let day = PhotoBrowseLayout.debugOverrideDay() ?? item.creationDate
+                #else
+                let day = item.creationDate
+                #endif
+                if let day {
+                    DayGridView(
+                        day: day,
+                        focusID: item.id,
+                        photoLibrary: appState.photoLibrary,
+                        allowedKinds: preferencesStore.allowedKinds.intersection(MediaKind.nonVideoKinds),
+                        onDismiss: dismissDayGrid
+                    )
+                    .transition(.opacity)
+                    .zIndex(20)
+                }
+            }
         }
+        .animation(PhotoBrowseLayout.dayGridFadeAnimation, value: showDayGrid)
         .statusBarHidden()
         // 返回：整页溶解，不把照片缩回首页卡
         .opacity(didFinish ? 0 : 1)
@@ -226,11 +426,17 @@ struct PhotoBrowseView: View {
         }
         .task {
             #if DEBUG
-            // UI 验证钩子：启动参数直达「回到那天」网格
-            if ProcessInfo.processInfo.arguments.contains("-uiTestOpenDayGrid"),
-               currentItem?.creationDate != nil {
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                showDayGrid = true
+            // UI 验证钩子：等分页落地后再淡入「回到那天」
+            if ProcessInfo.processInfo.arguments.contains("-uiTestOpenDayGrid") {
+                var waited: UInt64 = 0
+                while currentItem?.creationDate == nil, waited < 2_000_000_000 {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    waited += 50_000_000
+                }
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                if currentItem?.creationDate != nil {
+                    presentDayGrid()
+                }
             }
             // 进详情后自动返回，便于录制溶解 + 扇形入场
             if ProcessInfo.processInfo.arguments.contains("-uiTestDismissBrowse") {
@@ -247,19 +453,15 @@ struct PhotoBrowseView: View {
                 try? await Task.sleep(nanoseconds: 900_000_000)
                 markCurrentForDeletion()
             }
-            #endif
-        }
-        .fullScreenCover(isPresented: $showDayGrid) {
-            if let item = currentItem, let day = item.creationDate {
-                DayGridView(
-                    day: day,
-                    focusID: item.id,
-                    photoLibrary: appState.photoLibrary,
-                    allowedKinds: preferencesStore.allowedKinds.intersection(MediaKind.nonVideoKinds),
-                    onDismiss: { showDayGrid = false }
-                )
-                .zoomTransition(sourceID: item.id, in: zoomNamespace)
+            // 停在指定捏合倍率，核对照片跟手缩放区间 0.6–1.5
+            if let raw = ProcessInfo.processInfo.arguments
+                .first(where: { $0.hasPrefix("-uiTestPinchScale=") })?
+                .split(separator: "=").last,
+               let value = Double(raw) {
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                pinchScale = PhotoBrowseLayout.pinchScale(for: CGFloat(value))
             }
+            #endif
         }
         .sheet(item: $shareItem) { item in
             ShareSheet(items: [item.image])
@@ -341,32 +543,37 @@ struct PhotoBrowseView: View {
             MediaCardView(item: item, showsPlaceholderCanvas: false, contentMode: .fill)
                 .frame(width: size.width, height: size.height)
                 .clipShape(RoundedRectangle(cornerRadius: PhotoBrowseLayout.photoCornerRadius, style: .continuous))
-                .scaleEffect(isCurrent ? PhotoBrowseLayout.swipeUpScale(forOffset: dragOffsetY) : 1, anchor: .center)
+                // 上划缩小和捏合缩放叠乘：同一时刻通常只有一种手势在动
+                .scaleEffect(isCurrent ? currentPhotoScale : 1, anchor: .center)
                 .offset(y: isCurrent ? dragOffsetY : 0)
                 // 每张只用自己的 id 登记 destination。
                 // 若把邻页绑到进场那张 portalItem 上，Portal 会按 hideView 把邻页藏成透明，左右滑就会闪。
                 .portal(item: item, as: .destination, in: portalNamespace)
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
         }
-            .zoomTransitionSource(id: item.id, in: zoomNamespace)
             .simultaneousGesture(markGesture(for: item))
             .simultaneousGesture(pinchGesture(for: item))
     }
 
     // MARK: - 手势
 
+    /// 当前页展示缩放：上划跟手 × 捏合跟手
+    private var currentPhotoScale: CGFloat {
+        PhotoBrowseLayout.swipeUpScale(forOffset: dragOffsetY) * pinchScale
+    }
+
     /// 上划标记：仅竖直方向主导时生效，横向交给分页滚动
     private func markGesture(for item: MediaItem) -> some Gesture {
         DragGesture(minimumDistance: 25)
             .onChanged { value in
-                guard !isFlyingOff, item.id == currentID else { return }
+                guard !isFlyingOff, !isPinching, item.id == currentID else { return }
                 let translation = value.translation
                 if translation.height < 0, abs(translation.height) > abs(translation.width) {
                     dragOffsetY = translation.height
                 }
             }
             .onEnded { value in
-                guard !isFlyingOff, item.id == currentID else { return }
+                guard !isFlyingOff, !isPinching, item.id == currentID else { return }
                 let translation = value.translation
                 if translation.height < -PhotoBrowseLayout.swipeUpCommitDistance,
                    abs(translation.height) > abs(translation.width) {
@@ -379,15 +586,59 @@ struct PhotoBrowseView: View {
             }
     }
 
-    /// 双指捏合居中照片 → 缩放进「回到那天」
+    /// 双指捏合：过程中照片跟手缩放（0.6–1.5）；松手捏小则进当天，否则弹回
     private func pinchGesture(for item: MediaItem) -> some Gesture {
         MagnificationGesture()
-            .onEnded { value in
-                guard item.id == currentID, value < 0.85 else { return }
-                if item.creationDate != nil {
-                    showDayGrid = true
+            .onChanged { value in
+                guard item.id == currentID, !isFlyingOff else { return }
+                // 跟手时关掉隐式动画，否则会拖一拍，看起来生硬
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    isPinching = true
+                    pinchScale = PhotoBrowseLayout.pinchScale(for: value)
                 }
             }
+            .onEnded { value in
+                guard item.id == currentID, !isFlyingOff else {
+                    resetPinchScale()
+                    return
+                }
+                isPinching = false
+                let clamped = PhotoBrowseLayout.pinchScale(for: value)
+                pinchScale = clamped
+                if PhotoBrowseLayout.shouldOpenDayGrid(forPinch: value),
+                   item.creationDate != nil {
+                    // 保持当前缩小尺寸，网格淡入盖上，背景不跟着动
+                    presentDayGrid()
+                } else {
+                    withAnimation(PhotoBrowseLayout.pinchBounceBackAnimation) {
+                        pinchScale = 1
+                    }
+                }
+            }
+    }
+
+    /// 手势中断或从网格返回时，把捏合状态清干净
+    private func resetPinchScale() {
+        isPinching = false
+        pinchScale = 1
+    }
+
+    /// 当天页淡入盖住详情，不走系统从底部上来的 cover
+    private func presentDayGrid() {
+        withAnimation(PhotoBrowseLayout.dayGridFadeAnimation) {
+            showDayGrid = true
+        }
+    }
+
+    /// 当天页淡出后，照片回到原尺寸
+    private func dismissDayGrid() {
+        withAnimation(PhotoBrowseLayout.dayGridFadeAnimation) {
+            showDayGrid = false
+        }
+        pinchScale = 1
+        isPinching = false
     }
 
     /// 上划：松手后按当前 80% 尺寸继续向上飞出顶部，再从列表移除
