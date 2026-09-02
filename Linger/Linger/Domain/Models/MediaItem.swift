@@ -13,6 +13,12 @@ struct MediaItem: Identifiable, Hashable, Sendable {
 
     var localIdentifier: String { id }
 
+    /// 展示用宽高比；缺尺寸时按常见竖图 3:4，避免撑满整块底
+    var displayAspectRatio: CGFloat {
+        guard pixelWidth > 0, pixelHeight > 0 else { return 3.0 / 4.0 }
+        return CGFloat(pixelWidth) / CGFloat(pixelHeight)
+    }
+
     init(
         id: String,
         mediaKind: MediaKind,

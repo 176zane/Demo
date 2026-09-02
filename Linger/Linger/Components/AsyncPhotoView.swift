@@ -13,6 +13,8 @@ final class ImageRequestToken: ObservableObject {
 struct AsyncPhotoView: View {
     let localIdentifier: String
     var contentMode: ContentMode = .fit
+    /// 是否铺一层占位底；详情页只要照片本身，关掉以免露出圆角底
+    var showsPlaceholderCanvas: Bool = true
     /// 向父视图汇报加载状态（iCloud / 失败 → 可跳过）
     var onLoadStateChange: ((MediaLoadState) -> Void)? = nil
 
@@ -25,12 +27,17 @@ struct AsyncPhotoView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                Color.black.opacity(0.12)
+                if showsPlaceholderCanvas {
+                    Color.black.opacity(0.12)
+                }
                 if let image {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: contentMode)
-                        .transition(.opacity)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                        // 不用 opacity 转场：父级英雄弹簧会把首次出图插成半透明叠影
+                        .transition(.identity)
                 } else if loadState == .failed {
                     VStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle")

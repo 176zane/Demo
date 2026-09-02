@@ -5,6 +5,10 @@ options:
     iOS: "17.0"
   xcodeVersion: "16.0"
   createIntermediateGroups: true
+packages:
+  Portal:
+    url: https://github.com/Aeastr/Portal.git
+    from: 6.1.0
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -18,6 +22,9 @@ targets:
     platform: iOS
     sources:
       - path: Linger
+    dependencies:
+      - package: Portal
+        product: PortalTransitions
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cc.lingerphoto.learning.Linger
@@ -27,6 +34,7 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Linger 需要访问你的相册，以便随机回顾照片并在你确认后删除废片。
         INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: Linger 需要相册权限以管理你标记删除的照片。
+        INFOPLIST_KEY_PHPhotoLibraryPreventAutomaticLimitedAccessAlert: YES
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: ""
     info:
@@ -37,6 +45,7 @@ targets:
           - UIInterfaceOrientationPortrait
         NSPhotoLibraryUsageDescription: Linger 需要访问你的相册，以便随机回顾照片并在你确认后删除废片。
         NSPhotoLibraryAddUsageDescription: Linger 需要相册权限以管理你标记删除的照片。
+        PHPhotoLibraryPreventAutomaticLimitedAccessAlert: true
   LingerTests:
     type: bundle.unit-test
     platform: iOS

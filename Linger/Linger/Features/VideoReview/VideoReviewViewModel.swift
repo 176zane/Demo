@@ -66,6 +66,8 @@ final class VideoReviewViewModel: ObservableObject {
                 recordView(first)
                 isFavorite = first.isFavorite
                 phase = .browsing
+                // 后台预热当前 + 下一条播放器资源，进 Tab 即刻可播
+                prewarmUpcoming()
             } else {
                 phase = .empty
             }
@@ -100,6 +102,7 @@ final class VideoReviewViewModel: ObservableObject {
             recordView(next)
             isFavorite = next.isFavorite
             playbackProgress = 0
+            prewarmUpcoming()
         }
     }
 
@@ -199,9 +202,23 @@ final class VideoReviewViewModel: ObservableObject {
                 recordView(item)
                 isFavorite = item.isFavorite
                 playbackProgress = 0
+                prewarmUpcoming()
             }
         } else {
             Task { await loadNextBatch() }
+        }
+    }
+
+    /// 预热当前与下一条视频的 AVPlayerItem（当前条命中说明尚未播放过）
+    private func prewarmUpcoming() {
+        let candidates = [currentIndex, currentIndex + 1]
+            .filter { items.indices.contains($0) }
+            .map { items[$0].id }
+        guard !candidates.isEmpty else { return }
+        Task {
+            for id in candidates {
+                await VideoLoader.prewarm(localIdentifier: id)
+            }
         }
     }
 

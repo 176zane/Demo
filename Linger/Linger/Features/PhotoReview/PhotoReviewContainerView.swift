@@ -34,52 +34,39 @@ private struct PhotoReviewScreen: View {
             wrappedValue: PhotoReviewViewModel(
                 photoLibrary: photoLibrary,
                 statsStore: statsStore,
-                preferencesStore: preferencesStore
+                preferencesStore: preferencesStore,
+                prefetcher: .shared
             )
         )
     }
 
     var body: some View {
-        ZStack {
-            if viewModel.phase == .confirming {
-                ConfirmDeleteView(viewModel: viewModel)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else {
-                PhotoReviewView(viewModel: viewModel)
+        PhotoReviewView(viewModel: viewModel)
+            .task {
+                if viewModel.phase == .loading && viewModel.deal.isEmpty {
+                    await viewModel.start()
+                }
             }
-        }
-        .task {
-            if viewModel.phase == .loading && viewModel.deal.isEmpty {
-                await viewModel.start()
+            // 设置里改筛选或每组张数后重新抽组（预取器会按新配置重建队列）
+            .onChange(of: preferencesStore.allowedKinds) { _, _ in
+                Task { await viewModel.loadNextDeal() }
             }
-        }
-        // 设置里改筛选后重新抽组（照片 Tab）
-        .onChange(of: preferencesStore.allowedKinds) { _, _ in
-            Task { await viewModel.loadNextDeal() }
-        }
-        .sheet(isPresented: $viewModel.showSettings) {
-            SettingsView()
-                .environmentObject(statsStore)
-                .environmentObject(preferencesStore)
-                .environmentObject(appState)
-        }
-        .fullScreenCover(isPresented: $viewModel.showDayTimeline) {
-            if let date = viewModel.currentItem?.creationDate {
-                DayImmersiveView(
-                    day: date,
+            .onChange(of: preferencesStore.dealSize) { _, _ in
+                Task { await viewModel.loadNextDeal() }
+            }
+            .sheet(isPresented: $viewModel.showSettings) {
+                SettingsView()
+                    .environmentObject(statsStore)
+                    .environmentObject(preferencesStore)
+                    .environmentObject(appState)
+            }
+            .fullScreenCover(isPresented: $viewModel.showOnThisDay) {
+                OnThisDayView(
                     photoLibrary: appState.photoLibrary,
                     allowedKinds: preferencesStore.allowedKinds.intersection(MediaKind.nonVideoKinds),
-                    onDismiss: { viewModel.showDayTimeline = false }
+                    onDismiss: { viewModel.showOnThisDay = false }
                 )
             }
-        }
-        .fullScreenCover(isPresented: $viewModel.showOnThisDay) {
-            OnThisDayView(
-                photoLibrary: appState.photoLibrary,
-                allowedKinds: preferencesStore.allowedKinds.intersection(MediaKind.nonVideoKinds),
-                onDismiss: { viewModel.showOnThisDay = false }
-            )
-        }
-        .animation(.easeInOut(duration: 0.25), value: viewModel.phase)
+            .animation(.easeInOut(duration: 0.25), value: viewModel.phase)
     }
 }

@@ -15,6 +15,8 @@ final class ReviewViewModel: ObservableObject {
 
     @Published private(set) var phase: Phase = .loading
     @Published private(set) var deal: ReviewDeal = ReviewDeal(items: [])
+    /// 首页扇形展示的三张精选（从本组随机抽取，featured[1] 为中间主卡）
+    @Published private(set) var featuredItems: [MediaItem] = []
     @Published var showDayTimeline = false
     @Published var showOnThisDay = false
     @Published var showSettings = false
@@ -29,6 +31,8 @@ final class ReviewViewModel: ObservableObject {
     private let photoLibrary: PhotoLibraryServing
     private let statsStore: StatsStore
     private let preferencesStore: PreferencesStore
+    /// 抽组预取器（可选注入；测试传 nil 走直抽路径）
+    private let prefetcher: DealPrefetcher?
     private var undoTask: Task<Void, Never>?
     private var viewedInDeal: Set<String> = []
 
@@ -40,11 +44,13 @@ final class ReviewViewModel: ObservableObject {
     init(
         photoLibrary: PhotoLibraryServing,
         statsStore: StatsStore,
-        preferencesStore: PreferencesStore
+        preferencesStore: PreferencesStore,
+        prefetcher: DealPrefetcher? = nil
     ) {
         self.photoLibrary = photoLibrary
         self.statsStore = statsStore
         self.preferencesStore = preferencesStore
+        self.prefetcher = prefetcher
     }
 
     var currentItem: MediaItem? { deal.currentItem }
@@ -68,6 +74,15 @@ final class ReviewViewModel: ObservableObject {
 
         // 照片 Tab：只抽非视频类型（与偏好筛选取交集）
         let kinds = activePhotoKinds
+        let size = preferencesStore.dealSize
+
+        // 优先取预取缓存：零等待展示，并立即补预取下一组
+        if let cached = prefetcher?.takeDeal(size: size, kinds: kinds), !cached.isEmpty {
+            applyDeal(cached)
+            prefetcher?.ensureFilled(size: size, kinds: kinds, photoLibrary: photoLibrary)
+            return
+        }
+
         let hasMedia = await photoLibrary.hasAnyMedia(allowedKinds: kinds)
         guard hasMedia else {
             phase = .empty
@@ -76,16 +91,12 @@ final class ReviewViewModel: ObservableObject {
 
         do {
             let items = try await photoLibrary.fetchRandomItems(
-                count: preferencesStore.dealSize,
+                count: size,
                 allowedKinds: kinds,
                 excluding: []
             )
-            deal = ReviewDeal(items: items)
-            if let first = deal.currentItem {
-                recordViewIfNeeded(first)
-            }
-            phase = .browsing
-            prefetchNeighbors()
+            applyDeal(items)
+            prefetcher?.ensureFilled(size: size, kinds: kinds, photoLibrary: photoLibrary)
         } catch let error as PhotoLibraryError {
             if error == .emptyLibrary {
                 phase = .empty
@@ -95,6 +106,17 @@ final class ReviewViewModel: ObservableObject {
         } catch {
             phase = .error(error.localizedDescription)
         }
+    }
+
+    /// 应用新一组照片并进入浏览态
+    private func applyDeal(_ items: [MediaItem]) {
+        deal = ReviewDeal(items: items)
+        refreshFeatured()
+        if let first = deal.currentItem {
+            recordViewIfNeeded(first)
+        }
+        phase = .browsing
+        prefetchNeighbors()
     }
 
     func updateMediaLoadState(_ state: MediaLoadState) {
@@ -215,6 +237,89 @@ final class ReviewViewModel: ObservableObject {
 
     func skipConfirmAndContinue() async {
         await loadNextDeal()
+    }
+
+    // MARK: - 首页精选 / 全屏浏览
+
+    /// 从本组随机抽取最多三张作为首页扇形卡
+    func refreshFeatured() {
+        featuredItems = Array(deal.items.shuffled().prefix(3))
+    }
+
+    /// 浏览页翻到某张时计入「已浏览」（组内去重）
+    func recordBrowseView(_ item: MediaItem) {
+        recordViewIfNeeded(item)
+    }
+
+    /// 浏览页返回：批量删除上划标记的照片（系统会弹一次确认）
+    func deleteMarkedFromBrowse(ids: Set<String>) async {
+        guard !ids.isEmpty else { return }
+        isDeleting = true
+        defer { isDeleting = false }
+
+        // 删除前逐项估算字节，成功后写入对应统计分桶
+        var bytesByID: [String: Int64] = [:]
+        for id in ids {
+            bytesByID[id] = await AssetByteEstimator.estimatedBytes(forLocalIdentifier: id)
+        }
+
+        do {
+            let result = try await photoLibrary.deleteAssets(withIDs: Array(ids))
+            if result.deletedCount > 0 {
+                recordDeletedStats(forIDs: result.deletedIDs, bytesByID: bytesByID)
+                deal.removeItems(ids: Set(result.deletedIDs))
+            }
+            if !result.failedIDs.isEmpty {
+                toastMessage = result.errorDescription ?? "部分照片删除失败"
+            } else if result.deletedCount > 0 {
+                toastMessage = "已删除 \(result.deletedCount) 项"
+            }
+        } catch {
+            // 用户在系统弹窗取消或删除失败：保留照片，不再打扰
+            toastMessage = error.localizedDescription
+        }
+
+        // 卡组变化后刷新首页三张；组空则重新抽一组
+        if deal.items.isEmpty {
+            await loadNextDeal()
+        } else {
+            refreshFeatured()
+        }
+        scheduleToastDismiss()
+    }
+
+    /// 收藏 / 取消收藏，并同步组内条目状态
+    func setFavorite(_ favorite: Bool, itemID: String) async -> Bool {
+        do {
+            try await photoLibrary.setFavorite(favorite, id: itemID)
+            if let index = deal.items.firstIndex(where: { $0.id == itemID }) {
+                let old = deal.items[index]
+                deal.items[index] = MediaItem(
+                    id: old.id,
+                    mediaKind: old.mediaKind,
+                    creationDate: old.creationDate,
+                    isFavorite: favorite,
+                    pixelWidth: old.pixelWidth,
+                    pixelHeight: old.pixelHeight
+                )
+            }
+            return true
+        } catch {
+            toastMessage = error.localizedDescription
+            scheduleToastDismiss()
+            return false
+        }
+    }
+
+    /// 短暂展示 toast 后自动清除
+    private func scheduleToastDismiss() {
+        guard let message = toastMessage else { return }
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if toastMessage == message {
+                toastMessage = nil
+            }
+        }
     }
 
     // MARK: - Private

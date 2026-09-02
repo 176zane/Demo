@@ -39,6 +39,8 @@ struct VideoPreviewView: View {
                 }
                 .foregroundStyle(.white.opacity(0.8))
             } else {
+                // 播放器就绪前先显示视频海报帧，消除黑屏等待感
+                AsyncPhotoView(localIdentifier: localIdentifier, contentMode: .fit)
                 ProgressView().tint(.white)
             }
 
@@ -70,7 +72,13 @@ struct VideoPreviewView: View {
         errorMessage = nil
         tearDownPlayer()
         do {
-            let item = try await VideoLoader.loadPlayerItem(localIdentifier: localIdentifier)
+            // 优先用预热好的 item，首帧即刻可播
+            let item: AVPlayerItem
+            if let prewarmed = VideoLoader.takePrewarmed(localIdentifier: localIdentifier) {
+                item = prewarmed
+            } else {
+                item = try await VideoLoader.loadPlayerItem(localIdentifier: localIdentifier)
+            }
             let assetDuration = try await item.asset.load(.duration)
             let queuePlayer = AVQueuePlayer()
             queuePlayer.isMuted = true

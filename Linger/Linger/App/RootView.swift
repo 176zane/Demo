@@ -14,5 +14,9 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: appState.rootScreen)
+        .onAppear {
+            // 首帧再读一次：init 时 PhotoKit 偶发仍报 notDetermined
+            appState.refreshAuth()
+        }
     }
 }

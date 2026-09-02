@@ -58,6 +58,8 @@ struct StatsView: View {
                 Button("重置", role: .destructive) {
                     statsStore.resetAll()
                     recentStore.clear()
+                    // 去重记录清空后，预取队列里的旧组也一并作废
+                    DealPrefetcher.shared.invalidate()
                 }
             } message: {
                 Text("将清空已浏览/已删除统计与近期去重记录。此操作不可撤销。")

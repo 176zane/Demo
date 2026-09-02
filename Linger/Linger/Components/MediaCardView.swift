@@ -5,6 +5,10 @@ struct MediaCardView: View {
     let item: MediaItem
     /// 向回顾页汇报加载状态，便于展示「跳过」
     var onLoadStateChange: ((MediaLoadState) -> Void)? = nil
+    /// 详情页关闭占位底，只保留媒体本身
+    var showsPlaceholderCanvas: Bool = true
+    /// 媒体在卡片内的缩放方式；详情页用 fill 铺满按比例算出的框
+    var contentMode: ContentMode = .fit
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -28,6 +32,8 @@ struct MediaCardView: View {
                 default:
                     AsyncPhotoView(
                         localIdentifier: item.id,
+                        contentMode: contentMode,
+                        showsPlaceholderCanvas: showsPlaceholderCanvas,
                         onLoadStateChange: onLoadStateChange
                     )
                 }

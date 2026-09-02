@@ -1,0 +1,60 @@
+{
+  "originHash" : "85a0e055cde4c4a7bb36fcaa611c08a8a51fdf8137f75d33153f56a950ec8947",
+  "pins" : [
+    {
+      "identity" : "chronicle",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Aeastr/Chronicle.git",
+      "state" : {
+        "revision" : "78f4d0d634c4834f13f7ab1bcca79c150c4c172a",
+        "version" : "3.0.2"
+      }
+    },
+    {
+      "identity" : "obfuscate",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Aeastr/Obfuscate.git",
+      "state" : {
+        "revision" : "459e6ea0692ed5a5cbc79d414d56e1ff3b07e44d",
+        "version" : "1.4.0"
+      }
+    },
+    {
+      "identity" : "portal",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Aeastr/Portal.git",
+      "state" : {
+        "revision" : "8cd3ffe221988f4a4c57a7c9d47f45617589a199",
+        "version" : "6.1.0"
+      }
+    },
+    {
+      "identity" : "swift-log",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-log.git",
+      "state" : {
+        "revision" : "3ffafb9722d5d918c614feb496c8789a3b59d222",
+        "version" : "1.15.0"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax",
+      "state" : {
+        "revision" : "0687f71944021d616d34d922343dcef086855920",
+        "version" : "600.0.1"
+      }
+    },
+    {
+      "identity" : "uiportalbridge",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Aeastr/UIPortalBridge.git",
+      "state" : {
+        "revision" : "fd542e0d66b305cd802fdbacd7f1a153c210c50a",
+        "version" : "1.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}

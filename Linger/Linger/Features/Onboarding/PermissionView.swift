@@ -70,6 +70,9 @@ struct PermissionView: View {
                 .padding(.bottom, 40)
             }
         }
+        .onAppear {
+            appState.refreshAuth()
+        }
     }
 
     private var buttonTitle: String {
@@ -95,6 +98,11 @@ struct PermissionView: View {
 
     private func request() async {
         errorMessage = nil
+        // 已有读权限（含有限访问）直接进主页，避免再弹系统授权框
+        appState.refreshAuth()
+        if appState.authStatus.canAccessLibrary {
+            return
+        }
         // 已拒绝则引导去设置，无法再弹系统框
         if appState.authStatus == .denied || appState.authStatus == .restricted {
             guard let url = URL(string: UIApplication.openSettingsURLString) else {

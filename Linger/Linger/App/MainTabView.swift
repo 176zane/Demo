@@ -9,6 +9,8 @@ struct MainTabView: View {
     @State private var selectedTab: MainTab = .photos
     /// 已访问过的 Tab 保活，避免每次点击都重建 ViewModel / PhotoKit / AVPlayer
     @State private var loadedTabs: Set<MainTab> = [.photos]
+    /// 照片详情 overlay 打开时隐藏底栏，避免挡住全屏浏览
+    @State private var hideTabBarForBrowse = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -37,15 +39,19 @@ struct MainTabView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // 禁止选中态动画波及整页内容，消除 iOS 18 切换卡顿
-            .transaction { $0.animation = nil }
+            // 仅在切 Tab 时关掉隐式动画，避免波及照片英雄转场
+            .transaction(value: selectedTab) { $0.animation = nil }
 
             FloatingTabBar(selection: $selectedTab)
                 .padding(.bottom, 18)
                 .padding(.top, 4)
+                .opacity(hideTabBarForBrowse ? 0 : 1)
+                .allowsHitTesting(!hideTabBarForBrowse)
+                .animation(.easeOut(duration: 0.22), value: hideTabBarForBrowse)
         }
         .background(canvas)
         .ignoresSafeArea(edges: .bottom)
+        .onPreferenceChange(BrowseFullscreenKey.self) { hideTabBarForBrowse = $0 }
         .onChange(of: selectedTab) { _, tab in
             loadedTabs.insert(tab)
         }
