@@ -36,6 +36,38 @@ enum PhotoBrowseLayout {
         return 1 - (1 - swipeUpMinScale) * progress
     }
 
+    /// 上划位移 → 灵动岛红晕亮度：未上划为 0，到提交距离为 1，再往上封顶
+    static func swipeUpDeleteGlowIntensity(forOffset offset: CGFloat) -> CGFloat {
+        guard offset < 0 else { return 0 }
+        return min(1, -offset / swipeUpCommitDistance)
+    }
+
+    /// 顶部硬件切口：灵动岛 / 刘海 / 无。用来决定上划删除红晕画在哪。
+    enum TopCutoutKind: Equatable {
+        case none
+        case notch
+        case island
+    }
+
+    /// 顶安全区：≥59 灵动岛（14 Pro 起），约 44–58 刘海（X–14），更小则无切口。
+    static func topCutoutKind(topSafeInset: CGFloat) -> TopCutoutKind {
+        if topSafeInset >= 59 { return .island }
+        if topSafeInset >= 44 { return .notch }
+        return .none
+    }
+
+    /// 红晕要套住的切口框：岛是居中胶囊，刘海更宽且贴顶。
+    static func topCutoutGlowFrame(kind: TopCutoutKind) -> (size: CGSize, topInset: CGFloat) {
+        switch kind {
+        case .island:
+            return (CGSize(width: 126, height: 37), 11.5)
+        case .notch:
+            return (CGSize(width: 210, height: 32), 0)
+        case .none:
+            return (.zero, 0)
+        }
+    }
+
     /// 在可用框内按宽高比居中缩放，宽度不超过 bounds（从而左右不少于 inset）
     static func fittedSize(aspect: CGFloat, in bounds: CGSize) -> CGSize {
         let widthLimit = max(0, bounds.width)
@@ -163,6 +195,11 @@ struct PhotoBrowseView: View {
                     .allowsHitTesting(false)
                 bottomBar
             }
+
+            // 上划时在灵动岛 / 刘海周围铺红晕，跟手变亮，表达「要删」
+            DynamicIslandDeleteGlow(
+                intensity: PhotoBrowseLayout.swipeUpDeleteGlowIntensity(forOffset: dragOffsetY)
+            )
 
             if viewModel.isDeleting {
                 deletingOverlay
@@ -626,4 +663,62 @@ private struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+/// 顶部切口周围的上划删除红晕：灵动岛或刘海都画，无切口不画，不拦截手势
+private struct DynamicIslandDeleteGlow: View {
+    /// 0…1，越大越亮
+    let intensity: CGFloat
+
+    var body: some View {
+        GeometryReader { geo in
+            let topInset = max(geo.safeAreaInsets.top, Self.windowTopSafeInset())
+            let kind = PhotoBrowseLayout.topCutoutKind(topSafeInset: topInset)
+            if kind != .none, intensity > 0.001 {
+                cutoutHalo(kind: kind)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// 两层模糊胶囊：内圈贴切口，外圈散开，亮度随 intensity 抬高
+    private func cutoutHalo(kind: PhotoBrowseLayout.TopCutoutKind) -> some View {
+        let frame = PhotoBrowseLayout.topCutoutGlowFrame(kind: kind)
+        let innerGrow = 10 * intensity
+        let outerGrow = 22 * intensity
+        // 暗红 → 亮警示红，跟手上划
+        let red = Color(
+            red: 0.42 + 0.58 * intensity,
+            green: 0.04,
+            blue: 0.08
+        )
+        return ZStack {
+            Capsule(style: .continuous)
+                .fill(red.opacity(0.22 + 0.38 * intensity))
+                .frame(
+                    width: frame.size.width + 36 + outerGrow,
+                    height: frame.size.height + 22 + outerGrow
+                )
+                .blur(radius: 18 + 14 * intensity)
+            Capsule(style: .continuous)
+                .fill(red.opacity(0.28 + 0.42 * intensity))
+                .frame(
+                    width: frame.size.width + 14 + innerGrow,
+                    height: frame.size.height + 8 + innerGrow
+                )
+                .blur(radius: 8 + 6 * intensity)
+        }
+        .padding(.top, frame.topInset)
+    }
+
+    /// GeometryReader 在 ignoresSafeArea 下偶发读到 0，回退到前台窗口
+    private static func windowTopSafeInset() -> CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let active = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        let window = active?.windows.first(where: \.isKeyWindow) ?? active?.windows.first
+        return window?.safeAreaInsets.top ?? 0
+    }
 }

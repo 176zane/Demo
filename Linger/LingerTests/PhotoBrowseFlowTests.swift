@@ -96,6 +96,48 @@ final class PhotoBrowseFlowTests: XCTestCase {
         XCTAssertLessThanOrEqual(size.height, bounds.height)
     }
 
+    /// 上划删除红晕：未上划为 0，到提交距离为 1，再往上不再更亮
+    func testSwipeUpDeleteGlowTracksOffsetThenCaps() {
+        XCTAssertEqual(PhotoBrowseLayout.swipeUpDeleteGlowIntensity(forOffset: 0), 0, accuracy: 0.001)
+        XCTAssertEqual(PhotoBrowseLayout.swipeUpDeleteGlowIntensity(forOffset: 40), 0, accuracy: 0.001)
+
+        let half = PhotoBrowseLayout.swipeUpCommitDistance / 2
+        XCTAssertEqual(
+            PhotoBrowseLayout.swipeUpDeleteGlowIntensity(forOffset: -half),
+            0.5,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            PhotoBrowseLayout.swipeUpDeleteGlowIntensity(forOffset: -PhotoBrowseLayout.swipeUpCommitDistance),
+            1,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            PhotoBrowseLayout.swipeUpDeleteGlowIntensity(forOffset: -800),
+            1,
+            accuracy: 0.001
+        )
+    }
+
+    /// 顶安全区：≥59 灵动岛，约 44–58 刘海，更小则无切口。岛和刘海都要画红晕。
+    func testTopCutoutKindUsesTopSafeInset() {
+        XCTAssertEqual(PhotoBrowseLayout.topCutoutKind(topSafeInset: 59), .island)
+        XCTAssertEqual(PhotoBrowseLayout.topCutoutKind(topSafeInset: 62), .island)
+        XCTAssertEqual(PhotoBrowseLayout.topCutoutKind(topSafeInset: 47), .notch)
+        XCTAssertEqual(PhotoBrowseLayout.topCutoutKind(topSafeInset: 44), .notch)
+        XCTAssertEqual(PhotoBrowseLayout.topCutoutKind(topSafeInset: 20), .none)
+        XCTAssertEqual(PhotoBrowseLayout.topCutoutKind(topSafeInset: 0), .none)
+    }
+
+    /// 刘海比岛更宽、更贴顶，红晕框必须跟着切口走
+    func testTopCutoutGlowFrameMatchesNotchAndIsland() {
+        let notch = PhotoBrowseLayout.topCutoutGlowFrame(kind: .notch)
+        let island = PhotoBrowseLayout.topCutoutGlowFrame(kind: .island)
+        XCTAssertGreaterThan(notch.size.width, island.size.width)
+        XCTAssertLessThan(notch.topInset, island.topInset)
+        XCTAssertEqual(PhotoBrowseLayout.topCutoutGlowFrame(kind: .none).size, .zero)
+    }
+
     /// 上划缩放：未上划保持 1，位移越大越接近 80%，且不会更小
     func testSwipeUpScaleMapsOffsetToEightyPercentFloor() {
         XCTAssertEqual(PhotoBrowseLayout.swipeUpScale(forOffset: 0), 1, accuracy: 0.001)
