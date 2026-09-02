@@ -96,6 +96,25 @@ final class PhotoBrowseFlowTests: XCTestCase {
         XCTAssertLessThanOrEqual(size.height, bounds.height)
     }
 
+    /// 上划缩放：未上划保持 1，位移越大越接近 80%，且不会更小
+    func testSwipeUpScaleMapsOffsetToEightyPercentFloor() {
+        XCTAssertEqual(PhotoBrowseLayout.swipeUpScale(forOffset: 0), 1, accuracy: 0.001)
+        XCTAssertEqual(PhotoBrowseLayout.swipeUpScale(forOffset: 40), 1, accuracy: 0.001)
+
+        let half = PhotoBrowseLayout.swipeUpScaleDistance / 2
+        XCTAssertEqual(PhotoBrowseLayout.swipeUpScale(forOffset: -half), 0.9, accuracy: 0.001)
+        XCTAssertEqual(
+            PhotoBrowseLayout.swipeUpScale(forOffset: -PhotoBrowseLayout.swipeUpScaleDistance),
+            PhotoBrowseLayout.swipeUpMinScale,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            PhotoBrowseLayout.swipeUpScale(forOffset: -800),
+            PhotoBrowseLayout.swipeUpMinScale,
+            accuracy: 0.001
+        )
+    }
+
     /// 更瘦的竖图以高度为限，宽度必须小于可用宽（左右大于最小 inset）
     func testFittedSizePortraitKeepsWidthInsideBounds() {
         let bounds = CGSize(width: 360, height: 500)
@@ -186,6 +205,60 @@ final class PhotoBrowseFlowTests: XCTestCase {
         XCTAssertFalse(
             FanCardHitTesting.contains(peek, canvasSize: canvas, card: cards[1], revealed: true)
         )
+    }
+
+    /// 首页精选是组内乱序抽的三张，详情按整组顺序排。
+    /// 落地页必须是点进来的那张，不能退回组里第一张。
+    func testBrowseLandingIDIsTappedPhotoNotDealHead() {
+        let dealIDs = (0..<10).map { "p-\($0)" }
+        let tapped = "p-7"
+
+        XCTAssertEqual(
+            PhotoBrowseLayout.landingID(startID: tapped, visibleIDs: dealIDs),
+            "p-7"
+        )
+        XCTAssertNotEqual(
+            PhotoBrowseLayout.landingID(startID: tapped, visibleIDs: dealIDs),
+            dealIDs.first
+        )
+    }
+
+    /// 分页首帧回写组头时，应纠正回点进来的那张；用户已滑走则不拽回
+    func testBrowseLandingCorrectsFirstFrameEchoOnly() {
+        XCTAssertEqual(
+            PhotoBrowseLayout.idAfterFirstFrameEcho(
+                currentID: "p-0",
+                intended: "p-7",
+                visibleHead: "p-0"
+            ),
+            "p-7"
+        )
+        XCTAssertEqual(
+            PhotoBrowseLayout.idAfterFirstFrameEcho(
+                currentID: "p-8",
+                intended: "p-7",
+                visibleHead: "p-0"
+            ),
+            "p-8",
+            "用户已经滑走时不要拽回起点"
+        )
+        XCTAssertEqual(
+            PhotoBrowseLayout.idAfterFirstFrameEcho(
+                currentID: "p-7",
+                intended: "p-7",
+                visibleHead: "p-0"
+            ),
+            "p-7"
+        )
+    }
+
+    /// 点中的照片已不在可浏览列表时，退到当前第一张；空列表则无法落地
+    func testBrowseLandingIDFallsBackWhenTappedMissing() {
+        XCTAssertEqual(
+            PhotoBrowseLayout.landingID(startID: "gone", visibleIDs: ["a", "b"]),
+            "a"
+        )
+        XCTAssertNil(PhotoBrowseLayout.landingID(startID: "x", visibleIDs: []))
     }
 
     /// 空白处不应命中任何卡

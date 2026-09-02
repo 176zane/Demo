@@ -12,7 +12,7 @@ struct StatsView: View {
     private let recentStore = RecentViewedStore.shared
 
     var body: some View {
-        NavigationStack {
+        ZStack(alignment: .top) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("使用统计")
@@ -31,39 +31,58 @@ struct StatsView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 120)
             }
-            .background(
+
+            // 不用 NavigationStack 顶栏：系统浅色毛玻璃上滑时会露白条
+            VStack(spacing: 0) {
                 LinearGradient(
-                    colors: [LingerTheme.canvasTop, LingerTheme.canvasBottom],
+                    colors: [
+                        LingerTheme.canvasTop,
+                        LingerTheme.canvasTop.opacity(0.92),
+                        LingerTheme.canvasTop.opacity(0)
+                    ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .ignoresSafeArea()
+                .frame(height: 96)
+                .allowsHitTesting(false)
+                Spacer()
+            }
+            .ignoresSafeArea(edges: .top)
+
+            HStack {
+                Spacer()
+                GlassCircleButton(systemName: "gearshape") {
+                    showSettings = true
+                }
+                .accessibilityLabel("设置")
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+        }
+        .background(
+            LinearGradient(
+                colors: [LingerTheme.canvasTop, LingerTheme.canvasBottom],
+                startPoint: .top,
+                endPoint: .bottom
             )
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    GlassCircleButton(systemName: "gearshape") {
-                        showSettings = true
-                    }
-                    .accessibilityLabel("设置")
-                }
+            .ignoresSafeArea()
+        )
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .environmentObject(statsStore)
+                .environmentObject(preferencesStore)
+                .environmentObject(appState)
+        }
+        .alert("重置浏览记录？", isPresented: $showResetConfirm) {
+            Button("取消", role: .cancel) {}
+            Button("重置", role: .destructive) {
+                statsStore.resetAll()
+                recentStore.clear()
+                // 去重记录清空后，预取队列里的旧组也一并作废
+                DealPrefetcher.shared.invalidate()
             }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
-                    .environmentObject(statsStore)
-                    .environmentObject(preferencesStore)
-                    .environmentObject(appState)
-            }
-            .alert("重置浏览记录？", isPresented: $showResetConfirm) {
-                Button("取消", role: .cancel) {}
-                Button("重置", role: .destructive) {
-                    statsStore.resetAll()
-                    recentStore.clear()
-                    // 去重记录清空后，预取队列里的旧组也一并作废
-                    DealPrefetcher.shared.invalidate()
-                }
-            } message: {
-                Text("将清空已浏览/已删除统计与近期去重记录。此操作不可撤销。")
-            }
+        } message: {
+            Text("将清空已浏览/已删除统计与近期去重记录。此操作不可撤销。")
         }
     }
 

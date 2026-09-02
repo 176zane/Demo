@@ -20,6 +20,22 @@ enum PhotoBrowseLayout {
     static let dissolveDuration: TimeInterval = 0.42
     static let dissolveAnimation: Animation = .easeOut(duration: dissolveDuration)
 
+    /// 上划跟手缩小的下限（相对原尺寸）
+    static let swipeUpMinScale: CGFloat = 0.8
+    /// 上划这么多 pt 时缩到下限
+    static let swipeUpScaleDistance: CGFloat = 160
+    /// 松手后判定为「标记删除」的上划距离
+    static let swipeUpCommitDistance: CGFloat = 120
+    /// 松手后继续飞出顶部的时长
+    static let swipeUpFlyDuration: TimeInterval = 0.38
+
+    /// 上划位移 → 缩放：未上划为 1，最多缩到 80%
+    static func swipeUpScale(forOffset offset: CGFloat) -> CGFloat {
+        guard offset < 0 else { return 1 }
+        let progress = min(1, -offset / swipeUpScaleDistance)
+        return 1 - (1 - swipeUpMinScale) * progress
+    }
+
     /// 在可用框内按宽高比居中缩放，宽度不超过 bounds（从而左右不少于 inset）
     static func fittedSize(aspect: CGFloat, in bounds: CGSize) -> CGSize {
         let widthLimit = max(0, bounds.width)
@@ -39,6 +55,27 @@ enum PhotoBrowseLayout {
         }
         return CGSize(width: width, height: height)
     }
+
+    /// 详情打开后应停在哪一张：优先首页点进来的那张，不在本组则退到第一张。
+    /// 精选三张是从整组乱序抽的，分页仍按组顺序排；不能默认停在组头。
+    static func landingID(startID: String, visibleIDs: [String]) -> String? {
+        if visibleIDs.contains(startID) {
+            return startID
+        }
+        return visibleIDs.first
+    }
+
+    /// 分页首帧常把 currentID 回写成组头。若用户还没滑走，纠正回点进来的那张。
+    static func idAfterFirstFrameEcho(
+        currentID: String?,
+        intended: String,
+        visibleHead: String?
+    ) -> String {
+        if currentID != intended, currentID == visibleHead, intended != visibleHead {
+            return intended
+        }
+        return currentID ?? intended
+    }
 }
 
 /// 全屏浏览页：横向分页滚动、上划标记删除（返回时统一删除）、捏合居中照片回到那天
@@ -57,12 +94,16 @@ struct PhotoBrowseView: View {
     /// 返回：详情溶解，首页再播三卡入场
     var onDismiss: (MediaItem?) -> Void
     @Namespace private var zoomNamespace
-    /// 分页滚动当前居中的照片 id
+    /// 分页滚动当前居中的照片 id；进场后由 landOnStartItem 写入，避免首帧停在组头
     @State private var currentID: String?
+    /// 只落地一次，避免分页重建时把用户已经滑到的页拽回去
+    @State private var didLandOnStartItem = false
     /// 上划标记待删的 id（有序，便于撤销最近一次）
     @State private var markedIDs: [String] = []
-    /// 当前照片上划位移（仅作用于居中页）
+    /// 当前照片上划位移（只作用在照片本身，不推整页）
     @State private var dragOffsetY: CGFloat = 0
+    /// 松手后正在飞出顶部，忽略新的上划
+    @State private var isFlyingOff = false
     /// 首次进入已由首页同步过渐变，跳过一次取色，防止硬切
     @State private var skipInitialGradientSync = true
     @State private var isFavorite = false
@@ -88,7 +129,9 @@ struct PhotoBrowseView: View {
         _portalItem = portalItem
         self.portalNamespace = portalNamespace
         self.onDismiss = onDismiss
-        _currentID = State(initialValue: startItem.id)
+        // 先空着，等分页挂载后再写入。若这里就赋 startItem.id，
+        // ScrollView 收不到「变化」，会停在组里第一张，再把 currentID 回写成那张。
+        _currentID = State(initialValue: nil)
     }
 
     /// 去掉已标记删除后的可浏览列表
@@ -109,12 +152,15 @@ struct PhotoBrowseView: View {
             )
             .ignoresSafeArea()
 
+            // 分页从一开始就铺满全屏，上划只是在这层里移动，不必再临时提到另一层
+            pager
+                .ignoresSafeArea()
+
             VStack(spacing: 0) {
-                // 顶底栏进场即在，只让中间照片和背景走 Portal
                 topBar
-                pager
-                    .padding(.top, PhotoBrowseLayout.gapFromBars)
-                    .padding(.bottom, PhotoBrowseLayout.gapFromBars)
+                // 中间必须穿透，否则会挡住全屏分页的左右滑和上划
+                Spacer()
+                    .allowsHitTesting(false)
                 bottomBar
             }
 
@@ -154,6 +200,16 @@ struct PhotoBrowseView: View {
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 finishAndDismiss()
             }
+            // 进详情后停在上划中途，核对缩小且不被顶栏裁断
+            if ProcessInfo.processInfo.arguments.contains("-uiTestSwipeUpHold") {
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                dragOffsetY = -200
+            }
+            // 进详情后走完整上划飞出
+            if ProcessInfo.processInfo.arguments.contains("-uiTestSwipeUpFly") {
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                markCurrentForDeletion()
+            }
             #endif
         }
         .fullScreenCover(isPresented: $showDayGrid) {
@@ -175,34 +231,71 @@ struct PhotoBrowseView: View {
 
     // MARK: - 横向分页
 
-    /// LazyHStack + paging：懒加载相邻页，滚动手感与系统相册一致
+    /// 横向分页：组最多 30 张，用 HStack 预挂载，避免 Lazy 回收后重新出图闪白
     private var pager: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 0) {
-                ForEach(visibleItems) { item in
-                    photoPage(item)
-                        .containerRelativeFrame(.horizontal)
-                        .id(item.id)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(visibleItems) { item in
+                        photoPage(item)
+                            .containerRelativeFrame(.horizontal)
+                            .id(item.id)
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .scrollTargetLayout()
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $currentID)
+            .scrollIndicators(.hidden)
+            .scrollClipDisabled()
+            .task {
+                await landOnStartItem(using: proxy)
+            }
+            .onChange(of: currentID) { _, _ in
+                prefetchNeighbors()
+            }
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $currentID)
-        .scrollIndicators(.hidden)
-        // 首帧强制滚到被点的那张，避免 LazyHStack 停在组里第一张
-        .onAppear {
-            currentID = startItem.id
+    }
+
+    /// 分页挂载后再滚到点进来的那张。
+    /// 首帧 ScrollView 会按 offset 0 回写组头，所以落地后再纠正一次。
+    private func landOnStartItem(using proxy: ScrollViewProxy) async {
+        guard !didLandOnStartItem else { return }
+        let visibleIDs = visibleItems.map(\.id)
+        guard let target = PhotoBrowseLayout.landingID(
+            startID: startItem.id,
+            visibleIDs: visibleIDs
+        ) else {
+            return
+        }
+
+        didLandOnStartItem = true
+        currentID = target
+        proxy.scrollTo(target, anchor: .center)
+        prefetchNeighbors()
+
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        guard !Task.isCancelled else { return }
+        let corrected = PhotoBrowseLayout.idAfterFirstFrameEcho(
+            currentID: currentID,
+            intended: target,
+            visibleHead: visibleIDs.first
+        )
+        if corrected != currentID {
+            currentID = corrected
+            proxy.scrollTo(corrected, anchor: .center)
         }
     }
 
     private func photoPage(_ item: MediaItem) -> some View {
         let isCurrent = item.id == currentID
-        // 不用 padding+overlay：overlay 会铺回整页，左右 20 会被吃掉
         return GeometryReader { geo in
+            let chrome = PhotoBrowseLayout.topBarHeight
+                + PhotoBrowseLayout.bottomBarHeight
+                + PhotoBrowseLayout.gapFromBars * 2
             let maxSize = CGSize(
                 width: max(0, geo.size.width - PhotoBrowseLayout.horizontalInset * 2),
-                height: geo.size.height
+                height: max(0, geo.size.height - chrome)
             )
             let size = PhotoBrowseLayout.fittedSize(
                 aspect: item.displayAspectRatio,
@@ -211,30 +304,16 @@ struct PhotoBrowseView: View {
             MediaCardView(item: item, showsPlaceholderCanvas: false, contentMode: .fill)
                 .frame(width: size.width, height: size.height)
                 .clipShape(RoundedRectangle(cornerRadius: PhotoBrowseLayout.photoCornerRadius, style: .continuous))
-                .opacity(photoOpacity(for: item, isCurrent: isCurrent))
-                // 正向飞行落点：始终接到被点开的那张，避免和首页 source 对不上
-                .portal(
-                    item: isCurrent ? (portalItem ?? item) : item,
-                    as: .destination,
-                    in: portalNamespace
-                )
+                .scaleEffect(isCurrent ? PhotoBrowseLayout.swipeUpScale(forOffset: dragOffsetY) : 1, anchor: .center)
+                .offset(y: isCurrent ? dragOffsetY : 0)
+                // 每张只用自己的 id 登记 destination。
+                // 若把邻页绑到进场那张 portalItem 上，Portal 会按 hideView 把邻页藏成透明，左右滑就会闪。
+                .portal(item: item, as: .destination, in: portalNamespace)
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
         }
-            .offset(y: isCurrent ? dragOffsetY : 0)
             .zoomTransitionSource(id: item.id, in: zoomNamespace)
             .simultaneousGesture(markGesture(for: item))
             .simultaneousGesture(pinchGesture(for: item))
-    }
-
-    /// 上划时渐隐；进场飞行由 Portal 自己藏 destination
-    private func photoOpacity(for item: MediaItem, isCurrent: Bool) -> Double {
-        isCurrent ? currentCardOpacity : 1
-    }
-
-    /// 上划时渐隐，提示将被标记删除
-    private var currentCardOpacity: Double {
-        guard dragOffsetY < 0 else { return 1 }
-        return max(0.35, 1 - Double(-dragOffsetY) / 500)
     }
 
     // MARK: - 手势
@@ -243,16 +322,17 @@ struct PhotoBrowseView: View {
     private func markGesture(for item: MediaItem) -> some Gesture {
         DragGesture(minimumDistance: 25)
             .onChanged { value in
-                guard item.id == currentID else { return }
+                guard !isFlyingOff, item.id == currentID else { return }
                 let translation = value.translation
                 if translation.height < 0, abs(translation.height) > abs(translation.width) {
                     dragOffsetY = translation.height
                 }
             }
             .onEnded { value in
-                guard item.id == currentID else { return }
+                guard !isFlyingOff, item.id == currentID else { return }
                 let translation = value.translation
-                if translation.height < -120, abs(translation.height) > abs(translation.width) {
+                if translation.height < -PhotoBrowseLayout.swipeUpCommitDistance,
+                   abs(translation.height) > abs(translation.width) {
                     markCurrentForDeletion()
                 } else {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -273,15 +353,24 @@ struct PhotoBrowseView: View {
             }
     }
 
-    /// 上划：先飞出再从列表移除并翻到下一张；列表清空则直接走返回删除
+    /// 上划：松手后按当前 80% 尺寸继续向上飞出顶部，再从列表移除
     private func markCurrentForDeletion() {
-        guard let item = currentItem else { return }
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-            dragOffsetY = -700
+        guard let item = currentItem, !isFlyingOff else { return }
+        isFlyingOff = true
+        // 飞过整屏高度，保证缩小后的照片从顶部完全离开
+        let flyOffset = -(UIScreen.main.bounds.height + 160)
+        withAnimation(.easeIn(duration: PhotoBrowseLayout.swipeUpFlyDuration)) {
+            dragOffsetY = flyOffset
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+        Task { @MainActor in
+            let nanos = UInt64(PhotoBrowseLayout.swipeUpFlyDuration * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: nanos)
             let items = visibleItems
-            guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+            guard let index = items.firstIndex(where: { $0.id == item.id }) else {
+                isFlyingOff = false
+                dragOffsetY = 0
+                return
+            }
             let nextID: String?
             if index + 1 < items.count {
                 nextID = items[index + 1].id
@@ -293,6 +382,7 @@ struct PhotoBrowseView: View {
 
             markedIDs.append(item.id)
             dragOffsetY = 0
+            isFlyingOff = false
             if let nextID {
                 currentID = nextID
             } else {
@@ -419,11 +509,29 @@ struct PhotoBrowseView: View {
 
     // MARK: - 状态同步
 
+    /// 预缓存当前页左右各两张，减少滑到邻页时的解码空白
+    private func prefetchNeighbors() {
+        let items = visibleItems
+        guard let index = items.firstIndex(where: { $0.id == currentID }) ?? items.firstIndex(where: { $0.id == startItem.id }) else {
+            return
+        }
+        let neighborIDs = items.indices
+            .filter { abs($0 - index) <= 2 }
+            .map { items[$0].id }
+        let scale = UIScreen.main.scale
+        let target = CGSize(
+            width: max(UIScreen.main.bounds.width, 1) * scale,
+            height: max(UIScreen.main.bounds.height, 1) * scale
+        )
+        ImageLoader.shared.startCaching(identifiers: neighborIDs, targetSize: target)
+    }
+
     /// 翻到新照片：同步收藏态、记录浏览、按当前照片重取背景主色
     private func syncCurrentItem() async {
         guard let item = currentItem else { return }
         isFavorite = item.isFavorite
         viewModel.recordBrowseView(item)
+        prefetchNeighbors()
 
         // 进场那一帧：颜色已随英雄弹簧走到目标，再赋值会硬切
         if skipInitialGradientSync {
@@ -431,10 +539,14 @@ struct PhotoBrowseView: View {
             return
         }
 
+        // 等翻页停稳再换色；中途又滑走则取消，避免背景跟着连闪
+        try? await Task.sleep(nanoseconds: 180_000_000)
+        guard !Task.isCancelled, currentID == item.id else { return }
+
         guard let colors = await DominantColorExtractor.gradient(forLocalIdentifier: item.id) else {
             return
         }
-        withAnimation(.easeInOut(duration: 0.45)) {
+        withAnimation(.easeInOut(duration: 0.35)) {
             gradientTop = colors.top
             gradientBottom = colors.bottom
         }

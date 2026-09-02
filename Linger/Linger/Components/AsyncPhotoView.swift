@@ -86,7 +86,10 @@ struct AsyncPhotoView: View {
 
     private func request(size: CGSize) {
         cloudWaitTask?.cancel()
-        publish(.loading)
+        // 已有图时保持画面，不要先切到 loading / ProgressView
+        if image == nil {
+            publish(.loading)
+        }
 
         ImageLoader.shared.requestImage(
             for: localIdentifier,
@@ -94,7 +97,10 @@ struct AsyncPhotoView: View {
             token: token.id
         ) { payload in
             if let img = payload.image {
-                withAnimation(.easeOut(duration: 0.2)) {
+                // 低清→高清替换关掉隐式动画，避免翻页时淡入淡出闪一下
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
                     image = img
                 }
             }

@@ -105,9 +105,10 @@ struct PhotoReviewView: View {
         }
     }
 
-    /// 正向飞完即可；返回不走 Portal 反向，避免照片缩回卡片
+    /// 正向飞完拆掉 Portal 登记，避免详情左右滑时 destination 仍按 hideView 藏照片
     private func handlePortalCompletion(_ finished: Bool) {
-        _ = finished
+        guard finished else { return }
+        cancelPortalWithoutReverse()
     }
 
     /// 点卡：从这张照片直接展开到详情对应页
