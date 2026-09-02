@@ -361,13 +361,14 @@ final class PhotoBrowseFlowTests: XCTestCase {
         XCTAssertEqual(portrait / rowHeight, 9.0 / 16.0, accuracy: 0.01)
     }
 
-    /// 不管原图是 4:3 还是 3:4，格子只收成 16:9 / 9:16
-    func testDayGridSnapsPhotoAspectToTwoSpecs() {
-        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: 4.0 / 3.0), 16.0 / 9.0, accuracy: 0.001)
-        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: 16.0 / 9.0), 16.0 / 9.0, accuracy: 0.001)
-        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: 1.0), 9.0 / 16.0, accuracy: 0.001)
-        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: 3.0 / 4.0), 9.0 / 16.0, accuracy: 0.001)
-        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: 9.0 / 16.0), 9.0 / 16.0, accuracy: 0.001)
+    /// 格子跟原图宽高比走，4:3 / 1:1 / 3:4 都不再收成 16:9 或 9:16
+    func testDayGridKeepsNativePhotoAspect() {
+        XCTAssertEqual(DayGridLayout.cellAspect(for: 4.0 / 3.0), 4.0 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(DayGridLayout.cellAspect(for: 16.0 / 9.0), 16.0 / 9.0, accuracy: 0.001)
+        XCTAssertEqual(DayGridLayout.cellAspect(for: 1.0), 1.0, accuracy: 0.001)
+        XCTAssertEqual(DayGridLayout.cellAspect(for: 3.0 / 4.0), 3.0 / 4.0, accuracy: 0.001)
+        XCTAssertEqual(DayGridLayout.cellAspect(for: 9.0 / 16.0), 9.0 / 16.0, accuracy: 0.001)
+        XCTAssertEqual(DayGridLayout.cellAspect(for: 0), 3.0 / 4.0, accuracy: 0.001)
     }
 
     /// 侧向 EXIF 要把像素宽高对调，竖拍才能进 9:16
@@ -395,43 +396,57 @@ final class PhotoBrowseFlowTests: XCTestCase {
         )
     }
 
-    /// 资源朝向直接决定格子：横 16:9，竖 9:16
-    func testDayGridCellSpecFollowsPhotoOrientation() {
+    /// 格子宽度跟这张图自己的像素比走
+    func testDayGridCellUsesItemDisplayAspect() {
         XCTAssertEqual(DayGridLayout.CellSpec.forPhoto(pixelWidth: 1920, pixelHeight: 1080), .landscape)
         XCTAssertEqual(DayGridLayout.CellSpec.forPhoto(pixelWidth: 1080, pixelHeight: 1920), .portrait)
-        let landscapeItem = MediaItem(
+        let fourThree = MediaItem(
             id: "h",
             mediaKind: .photo,
             creationDate: Date(),
             pixelWidth: 4000,
-            pixelHeight: 2250
+            pixelHeight: 3000
         )
-        let portraitItem = MediaItem(
+        let threeFour = MediaItem(
             id: "v",
             mediaKind: .photo,
             creationDate: Date(),
-            pixelWidth: 2250,
+            pixelWidth: 3000,
             pixelHeight: 4000
         )
-        XCTAssertTrue(landscapeItem.isLandscape)
-        XCTAssertFalse(portraitItem.isLandscape)
-        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: landscapeItem.displayAspectRatio), 16.0 / 9.0, accuracy: 0.001)
-        XCTAssertEqual(DayGridLayout.snappedCellAspect(for: portraitItem.displayAspectRatio), 9.0 / 16.0, accuracy: 0.001)
+        XCTAssertTrue(fourThree.isLandscape)
+        XCTAssertFalse(threeFour.isLandscape)
+        XCTAssertEqual(
+            DayGridLayout.cellAspect(for: fourThree.displayAspectRatio),
+            4.0 / 3.0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            DayGridLayout.cellAspect(for: threeFour.displayAspectRatio),
+            3.0 / 4.0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            DayGridLayout.cellWidth(aspect: fourThree.displayAspectRatio, rowHeight: 160),
+            160 * (4.0 / 3.0),
+            accuracy: 0.5
+        )
     }
 
-    /// 砌砖结果里只许出现这两种宽高比（含提示卡）
-    func testDayGridPackedCellsUseOnlySixteenNineAndNineSixteen() {
+    /// 砌砖后照片格保持原比例，只有提示卡还是 9:16
+    func testDayGridPackedCellsKeepNativeAspects() {
         let packed = DayGridLayout.packPhotosAndHints(
             photoAspects: [("wide", 4.0 / 3.0), ("tall", 2.0 / 3.0), ("square", 1.0)],
             rowHeight: 160
         )
-        let cells = packed.rows.flatMap { $0 }
-        XCTAssertFalse(cells.isEmpty)
-        for cell in cells {
-            let aspect = cell.width / cell.height
-            let isLandscape = abs(aspect - 16.0 / 9.0) < 0.02
-            let isPortrait = abs(aspect - 9.0 / 16.0) < 0.02
-            XCTAssertTrue(isLandscape || isPortrait, "unexpected aspect \(aspect) for \(cell.id)")
+        let byID = Dictionary(
+            uniqueKeysWithValues: packed.rows.flatMap { $0 }.map { ($0.id, $0) }
+        )
+        XCTAssertEqual(byID["wide"]!.width / byID["wide"]!.height, 4.0 / 3.0, accuracy: 0.02)
+        XCTAssertEqual(byID["tall"]!.width / byID["tall"]!.height, 2.0 / 3.0, accuracy: 0.02)
+        XCTAssertEqual(byID["square"]!.width / byID["square"]!.height, 1.0, accuracy: 0.02)
+        for cell in packed.rows.flatMap({ $0 }) where DayGridLayout.isHintID(cell.id) {
+            XCTAssertEqual(cell.width / cell.height, 9.0 / 16.0, accuracy: 0.02)
         }
     }
 

@@ -173,15 +173,18 @@ enum DayGridLayout {
     static let rowCount = 2
     static let spacing: CGFloat = 10
     static let cornerRadius: CGFloat = 22
-    /// 格子只有两种规格：横 16:9、竖 9:16
+    /// 缺尺寸或非法宽高比时的回退，跟 MediaItem.displayAspectRatio 一致
+    static let fallbackAspect: CGFloat = 3.0 / 4.0
+    /// 末尾提示卡仍用竖格，不跟照片抢比例
+    static let hintAspect: CGFloat = 9.0 / 16.0
     static let landscapeAspect: CGFloat = 16.0 / 9.0
     static let portraitAspect: CGFloat = 9.0 / 16.0
     static let hintPinchID = "hint-pinch"
     static let hintSwipeID = "hint-swipe"
     /// 提示卡走竖格 9:16，垫在照片后面
     static let hintAspects: [(id: String, aspect: CGFloat)] = [
-        (hintPinchID, portraitAspect),
-        (hintSwipeID, portraitAspect)
+        (hintPinchID, hintAspect),
+        (hintSwipeID, hintAspect)
     ]
 
     struct PlacedCell: Equatable, Identifiable {
@@ -196,7 +199,7 @@ enum DayGridLayout {
         min(168, max(118, canvasWidth * 0.38))
     }
 
-    /// 格子规格：横图 16:9，竖图 9:16
+    /// 只表示朝向，不再决定格子宽高比
     enum CellSpec: Equatable {
         case landscape
         case portrait
@@ -208,7 +211,6 @@ enum DayGridLayout {
             }
         }
 
-        /// 宽大于高 → 16:9；竖图、正方形、缺尺寸 → 9:16
         static func forPhotoAspect(_ aspect: CGFloat) -> CellSpec {
             aspect > 1 ? .landscape : .portrait
         }
@@ -232,13 +234,14 @@ enum DayGridLayout {
         }
     }
 
-    static func snappedCellAspect(for photoAspect: CGFloat) -> CGFloat {
-        CellSpec.forPhotoAspect(photoAspect).aspect
+    /// 格子用照片自己的宽高比；非法值回退，不再收成 16:9 / 9:16
+    static func cellAspect(for photoAspect: CGFloat) -> CGFloat {
+        photoAspect > 0 ? photoAspect : fallbackAspect
     }
 
-    /// 行高固定，宽度只按 16:9 / 9:16
+    /// 行高固定，宽度 = 行高 × 这张图自己的宽高比
     static func cellWidth(aspect: CGFloat, rowHeight: CGFloat) -> CGFloat {
-        cellWidth(for: CellSpec.forPhotoAspect(aspect), rowHeight: rowHeight)
+        max(rowHeight * cellAspect(for: aspect), 1)
     }
 
     static func cellWidth(for spec: CellSpec, rowHeight: CGFloat) -> CGFloat {
@@ -254,8 +257,7 @@ enum DayGridLayout {
         var rows: [[PlacedCell]] = Array(repeating: [], count: rowCount)
         var widths = Array(repeating: CGFloat(0), count: rowCount)
         for item in aspects {
-            let spec = CellSpec.forPhotoAspect(item.aspect)
-            let width = cellWidth(for: spec, rowHeight: rowHeight)
+            let width = cellWidth(aspect: item.aspect, rowHeight: rowHeight)
             let row = widths[0] <= widths[1] ? 0 : 1
             if !rows[row].isEmpty {
                 widths[row] += spacing
@@ -268,13 +270,12 @@ enum DayGridLayout {
         return (rows, widths.max() ?? 0)
     }
 
-    /// 照片后面接两张操作提示卡
+    /// 照片按原比例入列，后面再接两张操作提示卡
     static func packPhotosAndHints(
         photoAspects: [(id: String, aspect: CGFloat)],
         rowHeight: CGFloat
     ) -> (rows: [[PlacedCell]], contentWidth: CGFloat) {
-        let snapped = photoAspects.map { ($0.id, snappedCellAspect(for: $0.aspect)) }
-        return pack(aspects: snapped + hintAspects, rowHeight: rowHeight)
+        pack(aspects: photoAspects + hintAspects, rowHeight: rowHeight)
     }
 
     static func isHintID(_ id: String) -> Bool {

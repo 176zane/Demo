@@ -156,18 +156,12 @@ struct DayGridView: View {
         }
     }
 
-    /// 两排等高、格子按横竖规格变宽，整条一起横向滚动
+    /// 两排等高、格子按每张自己的宽高比变宽，整条一起横向滚动
     private var twoRowStrip: some View {
         GeometryReader { geo in
             let rowHeight = DayGridLayout.rowHeight(canvasWidth: geo.size.width)
-            // 横图进 16:9，竖图进 9:16，再砌两排
             let aspects = items.map { item in
-                (
-                    item.id,
-                    item.isLandscape
-                        ? DayGridLayout.landscapeAspect
-                        : DayGridLayout.portraitAspect
-                )
+                (item.id, item.displayAspectRatio)
             }
             let packed = DayGridLayout.packPhotosAndHints(
                 photoAspects: aspects,
@@ -409,20 +403,17 @@ struct DayGridView: View {
     private func logPackedCellsForVerification() {
         let rowHeight = DayGridLayout.rowHeight(canvasWidth: 393)
         let packed = DayGridLayout.packPhotosAndHints(
-            photoAspects: items.map {
-                (
-                    $0.id,
-                    $0.isLandscape
-                        ? DayGridLayout.landscapeAspect
-                        : DayGridLayout.portraitAspect
-                )
-            },
+            photoAspects: items.map { ($0.id, $0.displayAspectRatio) },
             rowHeight: rowHeight
         )
         NSLog("[DayGrid] day=%@ count=%d", PhotoBrowseLayout.dayPageDateText(resolvedDay), items.count)
         for item in items {
-            let spec = item.isLandscape ? "16:9" : "9:16"
-            NSLog("[DayGrid] photo %dx%d → %@", item.pixelWidth, item.pixelHeight, spec)
+            NSLog(
+                "[DayGrid] photo %dx%d aspect=%.3f",
+                item.pixelWidth,
+                item.pixelHeight,
+                item.displayAspectRatio
+            )
         }
         for (row, cells) in packed.rows.enumerated() {
             for cell in cells {
